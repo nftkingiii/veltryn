@@ -57,6 +57,20 @@ async function staticFile(request, response) {
   } catch { return false }
 }
 
+async function proxyBitget(request, response) {
+  if (request.method !== 'GET' || !request.url?.startsWith('/api/bitget/api/v2/mix/market/')) return false
+  const upstream = new URL(request.url.replace('/api/bitget', ''), 'https://api.bitget.com')
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const result = await fetch(upstream, { signal: controller.signal, headers: { accept: 'application/json' } })
+    const text = await result.text()
+    response.writeHead(result.status, { 'content-type': result.headers.get('content-type') ?? 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
+    response.end(text); return true
+  } catch {
+    send(response, 502, { error: 'bitget_unavailable' }); return true
+  } finally { clearTimeout(timer) }
+}
+
 async function body(request) {
   let text = ''
   for await (const chunk of request) {
@@ -112,6 +126,7 @@ async function retrieveSource(raw) {
 const server = http.createServer(async (request, response) => {
   try {
     if (request.url === '/healthz') return send(response, 200, { status: 'ok', version, readiness: 'local-store' })
+    if (await proxyBitget(request, response)) return
     if (await staticFile(request, response)) return
     if (request.url?.startsWith('/api/public/reports/')) {
       const token = new URL(request.url, 'http://localhost').pathname.split('/').at(-1)
