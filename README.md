@@ -1,0 +1,32 @@
+# Veltryn
+
+Rehearse the trade.
+
+Veltryn is a planned AI research workbench for stress-testing proposed Bitget stock-perpetual positions before a human decides to trade. It connects a stated thesis to market evidence, historical price paths, and explicit position assumptions.
+
+Status: M1 vertical slice. The local app has a read-only Bitget market adapter, deterministic path stress test, explicit evidence/assumption labeling, and a local rehearsal save.
+
+The product will compare how funding, liquidity, leverage, and the path of prices affect a proposed position, even when its predicted final direction is correct. Historical observations and hypothetical scenarios will remain distinguishable.
+
+Target: Bitget AI Base Camp Hackathon S2, AI Trading Desk / Decision Stress Testing.
+
+## Run locally
+
+```powershell
+npm install
+npm run dev
+```
+
+The development server proxies public Bitget market requests to avoid browser CORS issues. No account keys, trading permissions, or order placement are used.
+
+## Verified commands
+
+The current workspace passes the equivalent direct checks:
+
+```powershell
+node node_modules/typescript/bin/tsc -b --pretty false
+node node_modules/vitest/vitest.mjs run
+node node_modules/vite/bin/vite.js build
+```
+
+The remaining product work is tracked in the private execution plan: durable persistence, research retrieval, AI explanation, deployment, and evidence capture.
