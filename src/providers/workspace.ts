@@ -1,4 +1,4 @@
-import type { RehearsalRecord } from '../domain/storage'
+import type { RehearsalRecord, ResearchSource } from '../domain/storage'
 
 const API = '/api/workspace/rehearsals'
 type RecordInput = Omit<RehearsalRecord, 'id' | 'createdAt' | 'updatedAt' | 'revision'>
@@ -19,4 +19,16 @@ export async function persistRemoteRehearsal(record: RecordInput, existingId?: s
 
 export async function removeRemoteRehearsal(id: string) {
   return request<{ records: RehearsalRecord[]; mode: 'server' }>(`${API}/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function verifyRemoteSource(url: string) {
+  return request<{ source: ResearchSource; mode: 'server' }>('/api/workspace/research/verify', { method: 'POST', body: JSON.stringify({ url }) })
+}
+
+export async function createRemoteShare(id: string) {
+  return request<{ url: string; token: string }>(`${API}/${encodeURIComponent(id)}/share`, { method: 'POST', body: '{}' })
+}
+
+export async function loadPublicReport(token: string) {
+  return request<{ record: RehearsalRecord; publishedAt: string }>(`/api/public/reports/${encodeURIComponent(token)}`)
 }

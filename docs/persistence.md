@@ -19,3 +19,5 @@ The API uses a random HttpOnly, SameSite session cookie and stores only a SHA-25
 The browser fallback is anonymous browser persistence, not an account-backed workspace. It does not provide multi-device recovery, share links, or server durability. Production deployment still needs a managed database, HTTPS cookie mode, origin/CSRF protection for write requests, rate limiting, and operational backups.
 
 The Rehearse view also offers a print-ready PDF path through the browser's native print dialog. The printed view includes the selected scenario, chart, evidence labels, and attached sources; it does not claim server-side PDF generation.
+
+Source verification currently allows only official Bitget hostnames, rejects redirects, and stores a bounded retrieved excerpt with its capture timestamp. A shared report is created only after an owner action and is served at `/report/<token>`; the owner can revoke the token through the API.

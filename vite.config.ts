@@ -10,6 +10,7 @@ export default defineConfig({
     proxy: {
       '/api/bitget': { target: 'https://api.bitget.com', changeOrigin: true, rewrite: (path) => path.replace(/^\/api\/bitget/, '') },
       '/api/workspace': { target: 'http://127.0.0.1:8787', changeOrigin: true },
+      '/api/public': { target: 'http://127.0.0.1:8787', changeOrigin: true },
     },
   },
 })

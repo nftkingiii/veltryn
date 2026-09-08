@@ -24,7 +24,7 @@ export type RehearsalRecord = {
   revisions?: RehearsalRevision[]
 }
 
-export type ResearchSource = { id: string; title: string; url: string; stance: 'supports' | 'counters' | 'context'; note: string }
+export type ResearchSource = { id: string; title: string; url: string; stance: 'supports' | 'counters' | 'context'; note: string; verification?: { status: 'verified' | 'unverified'; fetchedAt?: string; excerpt?: string; title?: string } }
 export type RehearsalRevision = Omit<RehearsalRecord, 'revisions'> & { revision: number }
 
 function makeId() {

@@ -11,5 +11,7 @@ The workspace API is an anonymous prototype boundary:
 - records and candle arrays are bounded, and symbols are restricted to the expected USDT form;
 - user text is rendered through React text nodes, never as HTML;
 - the browser fallback is explicit and does not claim server durability.
+- source verification only fetches HTTPS pages on the explicit Bitget host allowlist, rejects redirects, caps response size, and times out after eight seconds;
+- public reports are opt-in random-token views that omit the private session identifier and can be revoked by the owner.
 
 Before production deployment, add HTTPS-only cookies, origin/CSRF checks for writes, rate limiting, structured validation shared with the client, a managed database, security headers, audit logging, and automated dependency/install-policy review. AI and research retrieval are not connected yet; when added, model output and fetched source text must remain untrusted data.
