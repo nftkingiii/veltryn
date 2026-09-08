@@ -15,4 +15,5 @@ export const RotateCcw = (props: Props) => <Icon {...props}><path d="M4 11a8 8 0
 export const Save = (props: Props) => <Icon {...props}><path d="M5 4h12l2 2v14H5V4Z" /><path d="M8 4v6h8V4M8 20v-6h8v6" /></Icon>
 export const ShieldCheck = (props: Props) => <Icon {...props}><path d="M12 3 19 6v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3Z" /><path d="m9 12 2 2 4-4" /></Icon>
 export const Sparkles = (props: Props) => <Icon {...props}><path d="m12 3 1.2 4.8L18 9l-4.8 1.2L12 15l-1.2-4.8L6 9l4.8-1.2L12 3Zm7 12 .6 2.4L22 18l-2.4.6L19 21l-.6-2.4L16 18l2.4-.6L19 15Z" /></Icon>
+export const Trash2 = (props: Props) => <Icon {...props}><path d="M4 7h16m-10 4v6m4-6v6M9 7V4h6v3m-9 0 1 13h10l1-13" /></Icon>
 export const X = (props: Props) => <Icon {...props}><path d="m6 6 12 12M18 6 6 18" /></Icon>
