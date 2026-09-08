@@ -33,15 +33,19 @@ function legacyStore() {
 if (sqliteFile !== legacyDataFile && database.prepare('SELECT COUNT(*) AS count FROM sessions').get().count === 0) {
   const legacy = legacyStore()
   if (legacy) {
-    const migrate = database.transaction(() => {
+    database.exec('BEGIN')
+    try {
       const sessionInsert = database.prepare('INSERT OR IGNORE INTO sessions (id, created_at) VALUES (?, ?)')
       for (const item of Object.values(legacy.sessions ?? {})) sessionInsert.run(item.id, item.createdAt)
       const rehearsalInsert = database.prepare('INSERT OR IGNORE INTO rehearsals (id, session_id, updated_at, data) VALUES (?, ?, ?, ?)')
       for (const item of Object.values(legacy.rehearsals ?? {})) rehearsalInsert.run(item.id, item.sessionId, item.updatedAt, JSON.stringify(item))
       const shareInsert = database.prepare('INSERT OR IGNORE INTO shares (token, rehearsal_id, session_id, created_at, revoked_at) VALUES (?, ?, ?, ?, ?)')
       for (const [token, item] of Object.entries(legacy.shares ?? {})) shareInsert.run(token, item.rehearsalId, item.sessionId, item.createdAt, item.revokedAt ?? null)
-    })
-    migrate()
+      database.exec('COMMIT')
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
+    }
   }
 }
 
