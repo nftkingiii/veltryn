@@ -1,0 +1,11 @@
+.library-list{display:grid;gap:10px;margin-top:34px;max-width:760px}
+.library-row{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:17px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:border-color .15s,background .15s}
+.library-row:hover{border-color:var(--teal);background:var(--panel-2)}
+.library-row>div{min-width:0;flex:1}
+.library-row strong,.library-row small,.library-symbol{display:block}
+.library-symbol{color:var(--teal);font:10px 'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
+.library-row strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:8px}
+.library-row small{color:var(--muted);font-size:10px;margin-top:7px}
+.library-row .icon-button{flex:none}
+.input-wrap{position:relative}
+.input-wrap input{padding-right:52px}
