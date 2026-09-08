@@ -1,5 +1,6 @@
 import type { Candle, Ticker } from '../providers/bitget'
 import type { Direction } from './engine'
+import { loadRemoteRehearsals, persistRemoteRehearsal, removeRemoteRehearsal } from '../providers/workspace'
 
 const STORAGE_KEY = 'veltryn.rehearsals.v1'
 
@@ -56,4 +57,37 @@ export function removeRehearsal(id: string) {
   const next = loadRehearsals().filter((item) => item.id !== id)
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   return next
+}
+
+export async function loadRehearsalsWithFallback() {
+  try {
+    const remote = await loadRemoteRehearsals()
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(remote.records))
+    return { records: remote.records, mode: 'server' as const }
+  } catch {
+    return { records: loadRehearsals(), mode: 'browser' as const }
+  }
+}
+
+export async function persistRehearsalWithFallback(record: Omit<RehearsalRecord, 'id' | 'createdAt' | 'updatedAt' | 'revision'>, existingId?: string) {
+  const local = persistRehearsal(record, existingId)
+  try {
+    const remote = await persistRemoteRehearsal(record, existingId)
+    const records = loadRehearsals().filter((item) => item.id !== local.id && item.id !== remote.record.id)
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([remote.record, ...records]))
+    return { record: remote.record, mode: 'server' as const }
+  } catch {
+    return { record: local, mode: 'browser' as const }
+  }
+}
+
+export async function removeRehearsalWithFallback(id: string) {
+  const local = removeRehearsal(id)
+  try {
+    const remote = await removeRemoteRehearsal(id)
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(remote.records))
+    return { records: remote.records, mode: 'server' as const }
+  } catch {
+    return { records: local, mode: 'browser' as const }
+  }
 }

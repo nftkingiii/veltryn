@@ -15,9 +15,10 @@ Target: Bitget AI Base Camp Hackathon S2, AI Trading Desk / Decision Stress Test
 ```powershell
 npm install
 npm run dev
+npm run api
 ```
 
-The development server proxies public Bitget market requests to avoid browser CORS issues. No account keys, trading permissions, or order placement are used.
+Run both commands in separate terminals. The development server proxies public Bitget market requests and the workspace API to avoid browser CORS issues. No account keys, trading permissions, or order placement are used.
 
 ## Verified commands
 
