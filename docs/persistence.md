@@ -21,3 +21,5 @@ The browser fallback is anonymous browser persistence, not an account-backed wor
 The Rehearse view also offers a print-ready PDF path through the browser's native print dialog. The printed view includes the selected scenario, chart, evidence labels, and attached sources; it does not claim server-side PDF generation.
 
 Source verification currently allows only official Bitget hostnames, rejects redirects, and stores a bounded retrieved excerpt with its capture timestamp. A shared report is created only after an owner action and is served at `/report/<token>`; the owner can revoke the token through the API.
+
+Public source cards label the trader's note as a claim and the retrieved text as a verified excerpt. This is provenance binding, not a claim that the source supports the thesis.

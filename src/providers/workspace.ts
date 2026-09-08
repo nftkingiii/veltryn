@@ -29,6 +29,10 @@ export async function createRemoteShare(id: string) {
   return request<{ url: string; token: string }>(`${API}/${encodeURIComponent(id)}/share`, { method: 'POST', body: '{}' })
 }
 
+export async function revokeRemoteShare(id: string) {
+  return request<{ revoked: boolean }>(`${API}/${encodeURIComponent(id)}/share`, { method: 'DELETE' })
+}
+
 export async function loadPublicReport(token: string) {
   return request<{ record: RehearsalRecord; publishedAt: string }>(`/api/public/reports/${encodeURIComponent(token)}`)
 }
