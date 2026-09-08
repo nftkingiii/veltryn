@@ -1,3 +1,4 @@
+import { PriceChart } from '../ui/PriceChart'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, BookOpen, CircleHelp, Clock3, Copy, Database, LineChart, RotateCcw, Save, ShieldCheck, Sparkles, Trash2, X } from '../ui/icons'
 import { getCandles, getTicker, listRwaInstruments, type Candle, type Instrument, type Ticker } from '../providers/bitget'
@@ -14,22 +15,6 @@ const fallbackInstruments: Instrument[] = [
 const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toFixed(2)}`
 const pct = (value: number) => `${value < 0 ? '−' : ''}${Math.abs(value * 100).toFixed(2)}%`
 const valueToText = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value) ?? ''
-
-function Sparkline({ calm, shock }: { calm: number[]; shock: number[] }) {
-  const [point, setPoint] = useState(1)
-  const all = [...calm, ...shock]
-  const min = Math.min(...all), max = Math.max(...all)
-  const y = (v: number) => 220 - (v - min) / (max - min || 1) * 190
-  const x = (i: number) => 20 + i * 210
-  const points = (values: number[]) => values.map((v, i) => `${x(i)},${y(v)}`).join(' ')
-  return <><div className="chart-readout" aria-live="polite"><span>{['Entry', 'First shock', 'Reprice', 'Thesis window'][point]}</span><strong>{money(shock[point])}</strong><small>Shock path · calm {money(calm[point])}</small></div><svg className="path-chart" viewBox="0 0 750 250" role="img" aria-label="Modeled price paths. Select a stage below to inspect prices.">
-    {[0, 1, 2, 3, 4].map(i => <g key={i}><line x1="20" x2="650" y1={30+i*47.5} y2={30+i*47.5} stroke="var(--line)" strokeDasharray="3 5"/><text x="670" y={34+i*47.5} fill="var(--muted)" fontSize="11">{money(max-i*(max-min)/4)}</text></g>)}
-    <line x1={x(point)} x2={x(point)} y1="20" y2="230" stroke="var(--muted)" strokeDasharray="3 5" opacity=".5"/>
-    <polyline points={points(calm)} fill="none" stroke="var(--teal)" strokeWidth="2.5" strokeLinejoin="round" />
-    <polyline points={points(shock)} fill="none" stroke="var(--amber)" strokeWidth="2.5" strokeDasharray="6 4" strokeLinejoin="round" />
-    <circle cx={x(point)} cy={y(shock[point])} r="5" fill="var(--amber)" stroke="var(--panel)" strokeWidth="3"/>
-  </svg><div className="chart-stages">{['Entry', 'First shock', 'Reprice', 'Thesis window'].map((label,i)=><button key={label} aria-pressed={point===i} onClick={()=>setPoint(i)}>{label}</button>)}</div></>
-}
 
 export function App() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('veltryn.theme') || 'dark' } catch { return 'dark' } })
@@ -152,7 +137,7 @@ export function App() {
           <section className="results-column" aria-label="Scenario results"><div className="market-strip panel"><div className="market-id"><span className="asset-icon">{selected.slice(0, 2)}</span><div><strong>{selected.replace('USDT', '')} / USDT</strong><span>Bitget stock perpetual · {providerState === 'live' ? (snapshotLocked.current ? 'saved snapshot' : 'observed now') : 'illustrative snapshot'}</span></div></div><div className="market-stat"><span>Mark price</span><strong>{money(ticker ? Number(ticker.markPrice) : liveEntry)}</strong></div><div className="market-stat"><span>Funding / 8h</span><strong className={Number(ticker?.fundingRate ?? 0) > 0 ? 'warning-text' : ''}>{ticker ? pct(Number(ticker.fundingRate)) : '0.00%'}</strong></div><div className="market-stat"><span>Data captured</span><strong>{ticker ? new Date(Number(ticker.ts)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Example'}</strong></div></div>
             <div className="result-header"><div><span className="step-label">02 / PATH TEST</span><h2>Two paths. One thesis.</h2><p>Both scenarios finish at your {pct(endpointMove)} thesis endpoint. The dashed path tests the shock you must survive first.</p></div><div className="result-actions"><button className="outline-button save-action" disabled={saving} onClick={saveCurrent}><Copy size={15} /> {saving ? 'Saving…' : activeRehearsalId ? 'Save revision' : 'Save rehearsal'}</button><details className="export-menu"><summary>Export ↗</summary><div><button className="icon-button" aria-label="Export JSON" onClick={() => downloadReport('json')}>JSON</button><button className="icon-button" aria-label="Export CSV" onClick={() => downloadReport('csv')}>CSV</button><button className="icon-button" aria-label="Print or save PDF" onClick={() => downloadReport('pdf')}>PDF</button></div></details><button className="icon-button" aria-label="Share public report" disabled={!activeRehearsalId || workspaceMode !== 'server'} title={!activeRehearsalId ? 'Save your rehearsal before sharing' : 'Create public report'} onClick={shareReport}>Share</button></div></div>
             {(shareUrl || shareError) && <div className="share-note">{shareUrl ? <>Public report ready: <a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a> <button className="text-button" onClick={revokeReport}>Revoke</button></> : shareError}</div>}
-            <div className="chart-card panel"><div className="chart-meta"><div className="legend"><span><i className="legend-line calm" />Calm path</span><span><i className="legend-line shock" />Shock → recovery</span></div><span className="chart-tag">MODELED PATHS</span></div><Sparkline calm={calm.map((p) => p.price)} shock={shock.map((p) => p.price)} /></div>
+            <div className="chart-card panel"><div className="chart-meta"><div className="legend"><span><i className="legend-line calm" />Calm path</span><span><i className="legend-line shock" />Shock → recovery</span></div><span className="chart-tag">MODELED PATHS</span></div><PriceChart candles={candles} calm={calm.map((p) => p.price)} shock={shock.map((p) => p.price)} /></div>
             <div className="outcome-grid"><OutcomeCard label="Calm path" result={calmResult} color="teal" /><OutcomeCard label="Shock → recovery" result={shockResult} color="amber" /></div>
             <div className="evidence-card panel"><div className="evidence-heading"><div className="source-icon"><Database size={16} /></div><div><strong>What the model used</strong><span>Evidence is separated from the scenario assumptions.</span></div><button className="text-button" onClick={() => setTab('methodology')}>View method <ArrowUpRight size={14} /></button></div><div className="evidence-grid"><div><span className="evidence-label">Observed from Bitget</span><strong>{ticker ? 'Mark, index, ticker and funding' : 'Example snapshot only'}</strong><small>{ticker ? (snapshotLocked.current ? 'Market snapshot from saved rehearsal' : 'Live public market endpoint · captured now') : 'Provider unavailable for this session'}</small></div><div><span className="evidence-label">Modeled assumption</span><strong>{pct(dipMove)} adverse dip</strong><small>Deterministic path · not a forecast</small></div><div><span className="evidence-label">Historical context</span><strong>{historicalReturn === null ? 'Insufficient history' : `${pct(historicalReturn)} window move`}</strong><small>{candles.length ? `${candles.length} hourly candles observed` : 'No replay loaded'}</small></div></div></div>
           </section>
