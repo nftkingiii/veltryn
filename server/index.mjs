@@ -3,12 +3,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
+import { stat, readFile as readFileBinary } from 'node:fs/promises'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dataFile = resolve(process.env.VELTRYN_DATA_FILE ?? `${root}/.private/workspace-data.json`)
 const port = Number(process.env.PORT ?? 8787)
+const host = process.env.HOST ?? '0.0.0.0'
 const maxBody = 64 * 1024
 const maxRecords = 50
+const version = process.env.VELTRYN_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? 'dev'
 
 let store = { sessions: {}, rehearsals: {}, shares: {} }
 try { store = JSON.parse(await readFile(dataFile, 'utf8')) } catch { await persist() }
@@ -33,8 +36,25 @@ function session(request, response) {
 }
 
 function send(response, status, body) {
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin' })
   response.end(JSON.stringify(body))
+}
+
+async function staticFile(request, response) {
+  if (request.method !== 'GET') return false
+  const url = new URL(request.url ?? '/', 'http://localhost')
+  if (url.pathname.startsWith('/api/') || url.pathname === '/healthz') return false
+  const requested = url.pathname === '/' ? '/index.html' : url.pathname
+  const distRoot = resolve(root, 'dist')
+  const file = resolve(distRoot, `.${requested}`)
+  if (!file.startsWith(distRoot)) return false
+  try {
+    const info = await stat(file)
+    if (!info.isFile()) return false
+    const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json' }
+    response.writeHead(200, { 'content-type': types[file.slice(file.lastIndexOf('.'))] ?? 'application/octet-stream', 'cache-control': file.endsWith('index.html') ? 'no-store' : 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin' })
+    response.end(await readFileBinary(file)); return true
+  } catch { return false }
 }
 
 async function body(request) {
@@ -91,6 +111,8 @@ async function retrieveSource(raw) {
 
 const server = http.createServer(async (request, response) => {
   try {
+    if (request.url === '/healthz') return send(response, 200, { status: 'ok', version, readiness: 'local-store' })
+    if (await staticFile(request, response)) return
     if (request.url?.startsWith('/api/public/reports/')) {
       const token = new URL(request.url, 'http://localhost').pathname.split('/').at(-1)
       const share = store.shares[token]
@@ -165,4 +187,4 @@ const server = http.createServer(async (request, response) => {
   }
 })
 
-server.listen(port, '127.0.0.1', () => console.log(`Veltryn workspace API listening on http://127.0.0.1:${port}`))
+server.listen(port, host, () => console.log(`Veltryn workspace API listening on ${host}:${port}`))
