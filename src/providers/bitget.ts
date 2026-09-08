@@ -33,7 +33,9 @@ export async function listRwaInstruments() {
 
 export async function getTicker(symbol: string) {
   const result = await get<Ticker[]>(`/tickers?productType=USDT-FUTURES&symbol=${encodeURIComponent(symbol)}`)
-  return { ticker: result.data[0], requestTime: result.requestTime }
+  const ticker = result.data.find(item => item.symbol === symbol)
+  if (!ticker || !Number.isFinite(Number(ticker.lastPr)) || Number(ticker.lastPr) <= 0) throw new Error('Selected instrument has no valid ticker.')
+  return { ticker, requestTime: result.requestTime }
 }
 
 export async function getCandles(symbol: string, limit = 120) {
