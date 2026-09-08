@@ -1,0 +1,1 @@
+Company website icons, retrieved via Google's favicon service at 128px on 2026-09-08. These are identification marks; no endorsement is implied. Original company domains are recorded in src/domain/instruments.ts. Files are served locally to avoid runtime image-host dependencies.

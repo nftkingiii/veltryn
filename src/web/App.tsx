@@ -1,3 +1,5 @@
+import { fallbackInstruments, supportedSymbols } from '../domain/instruments'
+import { AssetLogo, InstrumentPicker } from '../ui/InstrumentPicker'
 import { PriceChart } from '../ui/PriceChart'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, BookOpen, CircleHelp, Clock3, Copy, Database, LineChart, RotateCcw, Save, ShieldCheck, Sparkles, Trash2, X } from '../ui/icons'
@@ -6,26 +8,9 @@ import { makePath, stressPath, type Direction, type PositionPlan, type StressRes
 import { loadRehearsalsWithFallback, persistRehearsalWithFallback, removeRehearsalWithFallback, type RehearsalRecord, type ResearchSource } from '../domain/storage'
 import { createRemoteShare, loadPublicReport, revokeRemoteShare, verifyRemoteSource } from '../providers/workspace'
 
-const fallbackInstruments: Instrument[] = [
-  { symbol: 'NVDAUSDT', baseCoin: 'NVDA', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
-  { symbol: 'TSLAUSDT', baseCoin: 'TSLA', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
-  { symbol: 'AAPLUSDT', baseCoin: 'AAPL', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
-  { symbol: 'GOOGLUSDT', baseCoin: 'GOOGL', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
-  { symbol: 'AMZNUSDT', baseCoin: 'AMZN', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
-]
-
 const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toFixed(2)}`
 const pct = (value: number) => `${value < 0 ? '−' : ''}${Math.abs(value * 100).toFixed(2)}%`
 const valueToText = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value) ?? ''
-const supportedSymbols = ['NVDAUSDT', 'TSLAUSDT', 'AAPLUSDT', 'GOOGLUSDT', 'AMZNUSDT']
-const logoSlug: Record<string, string> = { NVDAUSDT: 'nvidia', TSLAUSDT: 'tesla', AAPLUSDT: 'apple', GOOGLUSDT: 'google', AMZNUSDT: 'amazon' }
-
-function AssetLogo({ symbol }: { symbol: string }) {
-  const [failed, setFailed] = useState(false)
-  const slug = logoSlug[symbol]
-  return <span className="asset-icon">{slug && !failed ? <img src={`https://cdn.simpleicons.org/${slug}`} alt={`${symbol.replace('USDT', '')} logo`} onError={() => setFailed(true)} /> : symbol.replace('USDT', '').slice(0, 2)}</span>
-}
-
 export function App() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('veltryn.theme') || 'dark' } catch { return 'dark' } })
   const [saving, setSaving] = useState(false)
@@ -67,7 +52,7 @@ export function App() {
     setTicker(null); setCandles([]); setProviderState('loading')
     let cancelled = false
     Promise.all([listRwaInstruments(), getTicker(selected), getCandles(selected)])
-      .then(([items, live, history]) => { if (!cancelled && !snapshotLocked.current) { const supported = items.filter((item) => supportedSymbols.includes(item.symbol)); setInstruments(supported.length ? supported : items.slice(0, 5)); setTicker(live.ticker); setCandles(history.candles); setProviderState('live') } })
+      .then(([items, live, history]) => { if (!cancelled && !snapshotLocked.current) { const supported = items.filter((item) => supportedSymbols.includes(item.symbol)); setInstruments(supported.length ? supported : fallbackInstruments); setTicker(live.ticker); setCandles(history.candles); setProviderState('live') } })
       .catch(() => { if (!cancelled && !snapshotLocked.current) setProviderState('fallback') })
     return () => { cancelled = true }
   }, [selected, refreshKey])
@@ -135,7 +120,7 @@ export function App() {
         <section className="hero-row"><div><h1>Rehearse the trade.</h1><p className="hero-copy">Your thesis has a destination. Find out what happens along the way.</p></div><div className="hero-note"><ShieldCheck size={18} /><div><strong>Read-only by design</strong><span>Veltryn researches and models. You decide.</span></div></div></section>
         <section className="workspace-grid">
           <aside className="plan-panel panel"><div className="panel-heading"><div><span className="step-label">01 / POSITION</span><h2>State the trade</h2></div><button className="text-button" onClick={() => { snapshotLocked.current = false; setActiveRehearsalId(undefined); setQuantity(0.1); setCollateral(1000); setLossBudget(180); setDirection('long'); setEndpointMove(0.06); setDipMove(0.09); setResearchSources([]); setShareUrl(''); setShareError(''); setSaved(false); setRefreshKey(k => k + 1) }}><RotateCcw size={14} /> Reset</button></div>
-                <label>Instrument<select value={selected} onChange={(e) => { snapshotLocked.current = false; setActiveRehearsalId(undefined); setSelected(e.target.value); setShareUrl(''); setShareError(''); setSaved(false) }}>{instruments.filter((item) => item.isRwa === 'YES').map((item) => <option key={item.symbol} value={item.symbol}>{item.baseCoin} / USDT perpetual</option>)}</select></label>
+            <InstrumentPicker value={selected} items={instruments} onChange={(symbol) => { snapshotLocked.current = false; setActiveRehearsalId(undefined); setSelected(symbol); setShareUrl(''); setShareError(''); setSaved(false) }} />
             <div className="segmented" aria-label="Direction"><button className={direction === 'long' ? 'selected long' : ''} aria-pressed={direction === 'long'} onClick={() => setDirection('long')}><ArrowUpRight size={16} /> Long</button><button className={direction === 'short' ? 'selected short' : ''} aria-pressed={direction === 'short'} onClick={() => setDirection('short')}><ArrowDownRight size={16} /> Short</button></div>
             <div className="field-grid"><label>Quantity<input type="number" min="0.01" step="0.01" value={quantity} onChange={updateNumber(setQuantity)} /></label><label>Collateral<div className="input-wrap"><input type="number" min="1" step="10" value={collateral} onChange={updateNumber(setCollateral)} /><span className="input-suffix">USDT</span></div></label></div>
             <div className="field-grid"><label>Loss budget<div className="input-wrap"><input type="number" min="1" step="10" value={lossBudget} onChange={updateNumber(setLossBudget)} /><span className="input-suffix">USDT</span></div></label><label>Thesis endpoint<div className="input-wrap"><input type="number" min="1" max="50" step="1" value={Number((endpointMove * 100).toFixed(2))} onChange={(event) => { const v = Number(event.target.value); if (v > 0 && v <= 50) setEndpointMove(v / 100) }} /><span className="input-suffix">%</span></div></label></div>
