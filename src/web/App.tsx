@@ -10,11 +10,21 @@ const fallbackInstruments: Instrument[] = [
   { symbol: 'NVDAUSDT', baseCoin: 'NVDA', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
   { symbol: 'TSLAUSDT', baseCoin: 'TSLA', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
   { symbol: 'AAPLUSDT', baseCoin: 'AAPL', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
+  { symbol: 'GOOGLUSDT', baseCoin: 'GOOGL', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
+  { symbol: 'AMZNUSDT', baseCoin: 'AMZN', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
 ]
 
 const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toFixed(2)}`
 const pct = (value: number) => `${value < 0 ? '−' : ''}${Math.abs(value * 100).toFixed(2)}%`
 const valueToText = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value) ?? ''
+const supportedSymbols = ['NVDAUSDT', 'TSLAUSDT', 'AAPLUSDT', 'GOOGLUSDT', 'AMZNUSDT']
+const logoSlug: Record<string, string> = { NVDAUSDT: 'nvidia', TSLAUSDT: 'tesla', AAPLUSDT: 'apple', GOOGLUSDT: 'google', AMZNUSDT: 'amazon' }
+
+function AssetLogo({ symbol }: { symbol: string }) {
+  const [failed, setFailed] = useState(false)
+  const slug = logoSlug[symbol]
+  return <span className="asset-icon">{slug && !failed ? <img src={`https://cdn.simpleicons.org/${slug}`} alt={`${symbol.replace('USDT', '')} logo`} onError={() => setFailed(true)} /> : symbol.replace('USDT', '').slice(0, 2)}</span>
+}
 
 export function App() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('veltryn.theme') || 'dark' } catch { return 'dark' } })
@@ -57,7 +67,7 @@ export function App() {
     setTicker(null); setCandles([]); setProviderState('loading')
     let cancelled = false
     Promise.all([listRwaInstruments(), getTicker(selected), getCandles(selected)])
-      .then(([items, live, history]) => { if (!cancelled && !snapshotLocked.current) { const supported = items.filter((item) => ['NVDAUSDT', 'TSLAUSDT', 'AAPLUSDT'].includes(item.symbol)); setInstruments(supported.length ? supported : items.slice(0, 3)); setTicker(live.ticker); setCandles(history.candles); setProviderState('live') } })
+      .then(([items, live, history]) => { if (!cancelled && !snapshotLocked.current) { const supported = items.filter((item) => supportedSymbols.includes(item.symbol)); setInstruments(supported.length ? supported : items.slice(0, 5)); setTicker(live.ticker); setCandles(history.candles); setProviderState('live') } })
       .catch(() => { if (!cancelled && !snapshotLocked.current) setProviderState('fallback') })
     return () => { cancelled = true }
   }, [selected, refreshKey])
@@ -134,7 +144,7 @@ export function App() {
             <label className="shock-control">Adverse move <strong>{pct(dipMove)}</strong><input aria-label="Adverse move" type="range" min="1" max="40" value={dipMove * 100} onChange={e => setDipMove(Number(e.target.value)/100)} /><small>How far could price move against you?</small></label><div className="plan-foot"><span>Estimated leverage <strong>{leverage.toFixed(2)}×</strong></span><span>Entry <strong>{money(liveEntry)}</strong></span></div>
             <button className="primary-button" onClick={() => document.querySelector('.result-header')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' })}><Sparkles size={16} /> Review live results <span>↗</span></button>
           </aside>
-          <section className="results-column" aria-label="Scenario results"><div className="market-strip panel"><div className="market-id"><span className="asset-icon">{selected.slice(0, 2)}</span><div><strong>{selected.replace('USDT', '')} / USDT</strong><span>Bitget stock perpetual · {providerState === 'live' ? (snapshotLocked.current ? 'saved snapshot' : 'observed now') : 'illustrative snapshot'}</span></div></div><div className="market-stat"><span>Mark price</span><strong>{money(ticker ? Number(ticker.markPrice) : liveEntry)}</strong></div><div className="market-stat"><span>Funding / 8h</span><strong className={Number(ticker?.fundingRate ?? 0) > 0 ? 'warning-text' : ''}>{ticker ? pct(Number(ticker.fundingRate)) : '0.00%'}</strong></div><div className="market-stat"><span>Data captured</span><strong>{ticker ? new Date(Number(ticker.ts)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Example'}</strong></div></div>
+          <section className="results-column" aria-label="Scenario results"><div className="market-strip panel"><div className="market-id"><AssetLogo symbol={selected} /><div><strong>{selected.replace('USDT', '')} / USDT</strong><span>Bitget stock perpetual · {providerState === 'live' ? (snapshotLocked.current ? 'saved snapshot' : 'observed now') : 'illustrative snapshot'}</span></div></div><div className="market-stat"><span>Mark price</span><strong>{money(ticker ? Number(ticker.markPrice) : liveEntry)}</strong></div><div className="market-stat"><span>Funding / 8h</span><strong className={Number(ticker?.fundingRate ?? 0) > 0 ? 'warning-text' : ''}>{ticker ? pct(Number(ticker.fundingRate)) : '0.00%'}</strong></div><div className="market-stat"><span>Data captured</span><strong>{ticker ? new Date(Number(ticker.ts)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Example'}</strong></div></div>
             <div className="result-header"><div><span className="step-label">02 / PATH TEST</span><h2>Two paths. One thesis.</h2><p>Both scenarios finish at your {pct(endpointMove)} thesis endpoint. The dashed path tests the shock you must survive first.</p></div><div className="result-actions"><button className="outline-button save-action" disabled={saving} onClick={saveCurrent}><Copy size={15} /> {saving ? 'Saving…' : activeRehearsalId ? 'Save revision' : 'Save rehearsal'}</button><details className="export-menu"><summary>Export ↗</summary><div><button className="icon-button" aria-label="Export JSON" onClick={() => downloadReport('json')}>JSON</button><button className="icon-button" aria-label="Export CSV" onClick={() => downloadReport('csv')}>CSV</button><button className="icon-button" aria-label="Print or save PDF" onClick={() => downloadReport('pdf')}>PDF</button></div></details><button className="icon-button" aria-label="Share public report" disabled={!activeRehearsalId || workspaceMode !== 'server'} title={!activeRehearsalId ? 'Save your rehearsal before sharing' : 'Create public report'} onClick={shareReport}>Share</button></div></div>
             {(shareUrl || shareError) && <div className="share-note">{shareUrl ? <>Public report ready: <a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a> <button className="text-button" onClick={revokeReport}>Revoke</button></> : shareError}</div>}
             <div className="chart-card panel"><div className="chart-meta"><div className="legend"><span><i className="legend-line calm" />Calm path</span><span><i className="legend-line shock" />Shock → recovery</span></div><span className="chart-tag">MODELED PATHS</span></div><PriceChart candles={candles} calm={calm.map((p) => p.price)} shock={shock.map((p) => p.price)} /></div>
