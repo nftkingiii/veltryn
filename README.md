@@ -10,6 +10,8 @@ The product will compare how funding, liquidity, leverage, and the path of price
 
 Target: Bitget AI Base Camp Hackathon S2, AI Trading Desk / Decision Stress Testing.
 
+Live demo: https://veltryn-production.up.railway.app/
+
 ## Run locally
 
 ```powershell
