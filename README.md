@@ -33,3 +33,7 @@ node node_modules/vite/bin/vite.js build
 ```
 
 The remaining product work is tracked in the private execution plan: server-backed anonymous workspaces, research retrieval, AI explanation, deployment, and evidence capture. Browser storage is deliberately not presented as multi-device or cloud persistence.
+
+### Persistence
+
+The server stores workspace records in JSON. Local development uses `.private/workspace-data.json`; a Railway deployment with a mounted volume should set `VELTRYN_DATA_FILE=/data/workspace-data.json`. This is durable for a single Railway replica and preserves the existing session-scoped ownership and share revocation model. Multi-instance operation should move the same store contract to a managed database.

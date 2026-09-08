@@ -12,6 +12,7 @@ const host = process.env.HOST ?? '0.0.0.0'
 const maxBody = 64 * 1024
 const maxRecords = 50
 const version = process.env.VELTRYN_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? 'dev'
+const persistenceMode = dataFile.startsWith(resolve('/data')) ? 'volume-store' : 'local-store'
 
 let store = { sessions: {}, rehearsals: {}, shares: {} }
 try { store = JSON.parse(await readFile(dataFile, 'utf8')) } catch { await persist() }
@@ -125,7 +126,7 @@ async function retrieveSource(raw) {
 
 const server = http.createServer(async (request, response) => {
   try {
-    if (request.url === '/healthz') return send(response, 200, { status: 'ok', version, readiness: 'local-store' })
+    if (request.url === '/healthz') return send(response, 200, { status: 'ok', version, readiness: persistenceMode })
     if (await proxyBitget(request, response)) return
     if (await staticFile(request, response)) return
     if (request.url?.startsWith('/api/public/reports/')) {

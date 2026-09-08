@@ -12,4 +12,4 @@ Verified on 2026-09-08:
 - a clean browser loaded live NVDA mark price, funding, and 120 hourly candles, and rendered the calm versus shock→recovery path results;
 - a clean production API session created a rehearsal, created a public share, opened the public report with `200`, revoked it, and received `404` afterward.
 
-The Railway service currently uses the local JSON workspace store. This proves the deployed demo path, not multi-instance durability; production persistence still requires a managed database or mounted volume.
+The Railway service now uses a mounted volume at `/data` with `VELTRYN_DATA_FILE=/data/workspace-data.json`. The JSON store is durable across service restarts for the single deployed replica. It is not a multi-instance database; a managed database remains the production upgrade for horizontal scaling.
