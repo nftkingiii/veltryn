@@ -52,6 +52,8 @@ function valid(record) {
   if (!['live', 'fallback'].includes(record.providerState) || record.thesis.length > 2000) return false
   for (const key of ['quantity', 'collateral', 'lossBudget', 'endpointMove', 'dipMove']) if (!Number.isFinite(record[key]) || record[key] <= 0) return false
   if (!Array.isArray(record.candles) || record.candles.length > 240) return false
+  if (!Array.isArray(record.researchSources) || record.researchSources.length > 6) return false
+  if (record.researchSources.some((source) => !source || typeof source.title !== 'string' || source.title.length > 180 || typeof source.note !== 'string' || source.note.length > 800 || typeof source.url !== 'string' || source.url.length > 500 || !['supports', 'counters', 'context'].includes(source.stance) || (() => { try { return new URL(source.url).protocol !== 'https:' } catch { return true } })())) return false
   if (record.ticker !== null && typeof record.ticker !== 'object') return false
   return true
 }
@@ -68,7 +70,8 @@ const server = http.createServer(async (request, response) => {
     const current = session(request, response)
     const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
     const collectionPath = '/api/workspace/rehearsals'
-    const id = url.pathname === collectionPath ? undefined : url.pathname.slice(`${collectionPath}/`.length)
+    const tail = url.pathname === collectionPath ? '' : url.pathname.slice(`${collectionPath}/`.length)
+    const [id, action] = tail.split('/')
     if (request.method === 'GET' && !id) return send(response, 200, { records: owned(current.id), mode: 'server' })
     if (request.method === 'POST' && !id) {
       const input = await body(request)
@@ -77,10 +80,27 @@ const server = http.createServer(async (request, response) => {
       if (previous && previous.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
       if (!previous && owned(current.id).length >= maxRecords) return send(response, 429, { error: 'workspace_limit' })
       const now = new Date().toISOString()
-      const saved = { ...input, id: previous?.id ?? randomUUID(), sessionId: current.id, createdAt: previous?.createdAt ?? now, updatedAt: now, revision: (previous?.revision ?? 0) + 1 }
+      const revision = (previous?.revision ?? 0) + 1
+      const revisionSnapshot = { ...input, id: previous?.id ?? randomUUID(), createdAt: previous?.createdAt ?? now, updatedAt: now, revision }
+      const saved = { ...revisionSnapshot, id: revisionSnapshot.id, sessionId: current.id, revisions: [...(previous?.revisions ?? []), revisionSnapshot] }
       store.rehearsals[saved.id] = saved
       await persist()
       return send(response, 200, { record: toPublic(saved), mode: 'server' })
+    }
+    if (request.method === 'GET' && id && action === 'export') {
+      const record = store.rehearsals[id]
+      if (!record || record.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
+      const format = url.searchParams.get('format') === 'csv' ? 'csv' : 'json'
+      const publicRecord = toPublic(record)
+      if (format === 'json') {
+        response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="veltryn-${id}.json"`, 'cache-control': 'no-store' })
+        return response.end(JSON.stringify(publicRecord, null, 2))
+      }
+      const rows = [['revision', 'updatedAt', 'symbol', 'direction', 'quantity', 'collateral', 'lossBudget', 'endpointMove', 'dipMove', 'thesis', 'researchSources']]
+      for (const item of publicRecord.revisions ?? [publicRecord]) rows.push([item.revision, item.updatedAt, item.symbol, item.direction, item.quantity, item.collateral, item.lossBudget, item.endpointMove, item.dipMove, item.thesis, (item.researchSources ?? []).length])
+      const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n')
+      response.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="veltryn-${id}.csv"`, 'cache-control': 'no-store' })
+      return response.end(csv)
     }
     if (request.method === 'DELETE' && id) {
       const record = store.rehearsals[id]

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, BookOpen, CircleHelp, Clock3, Copy, Database, LineChart, RotateCcw, Save, ShieldCheck, Sparkles, Trash2, X } from '../ui/icons'
 import { getCandles, getTicker, listRwaInstruments, type Candle, type Instrument, type Ticker } from '../providers/bitget'
 import { makePath, stressPath, type Direction, type PositionPlan, type StressResult } from '../domain/engine'
-import { loadRehearsalsWithFallback, persistRehearsalWithFallback, removeRehearsalWithFallback, type RehearsalRecord } from '../domain/storage'
+import { loadRehearsalsWithFallback, persistRehearsalWithFallback, removeRehearsalWithFallback, type RehearsalRecord, type ResearchSource } from '../domain/storage'
 
 const fallbackInstruments: Instrument[] = [
   { symbol: 'NVDAUSDT', baseCoin: 'NVDA', quoteCoin: 'USDT', isRwa: 'YES', minTradeNum: '0.01', minTradeUSDT: '5', makerFeeRate: '0.0002', takerFeeRate: '0.0006', fundInterval: '8', maxLever: '100', pricePlace: '2', volumePlace: '2' },
@@ -12,6 +12,7 @@ const fallbackInstruments: Instrument[] = [
 
 const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toFixed(2)}`
 const pct = (value: number) => `${value < 0 ? '−' : ''}${Math.abs(value * 100).toFixed(2)}%`
+const valueToText = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value) ?? ''
 
 function Sparkline({ calm, shock }: { calm: number[]; shock: number[] }) {
   const all = [...calm, ...shock]
@@ -40,6 +41,12 @@ export function App() {
   const [endpointMove, setEndpointMove] = useState(0.06)
   const [dipMove, setDipMove] = useState(0.09)
   const [thesis, setThesis] = useState('The catalyst resolves in my direction, but I need to know whether the position survives the path there.')
+  const [researchSources, setResearchSources] = useState<ResearchSource[]>([])
+  const [sourceTitle, setSourceTitle] = useState('')
+  const [sourceUrl, setSourceUrl] = useState('')
+  const [sourceStance, setSourceStance] = useState<ResearchSource['stance']>('supports')
+  const [sourceNote, setSourceNote] = useState('')
+  const [sourceError, setSourceError] = useState('')
   const [rehearsals, setRehearsals] = useState<RehearsalRecord[]>([])
   const [workspaceMode, setWorkspaceMode] = useState<'server' | 'browser'>('browser')
   const [activeRehearsalId, setActiveRehearsalId] = useState<string | undefined>()
@@ -70,11 +77,28 @@ export function App() {
   const updateNumber = (setter: (v: number) => void) => (event: React.ChangeEvent<HTMLInputElement>) => setter(Number(event.target.value))
   const reportStatus = (result: StressResult) => result.status === 'within-budget' ? 'Within budget' : result.status === 'stop-triggered' ? 'Stop triggered' : 'Budget breached'
   const saveCurrent = () => {
-    persistRehearsalWithFallback({ symbol: selected, direction, quantity, collateral, lossBudget, endpointMove, dipMove, thesis, providerState: ticker ? 'live' : 'fallback', ticker, candles }, activeRehearsalId).then(({ record, mode }) => { setRehearsals((current) => [record, ...current.filter((item) => item.id !== record.id)]); setWorkspaceMode(mode); setActiveRehearsalId(record.id); setSaved(true) })
+    persistRehearsalWithFallback({ symbol: selected, direction, quantity, collateral, lossBudget, endpointMove, dipMove, thesis, providerState: ticker ? 'live' : 'fallback', ticker, candles, researchSources }, activeRehearsalId).then(({ record, mode }) => { setRehearsals((current) => [record, ...current.filter((item) => item.id !== record.id)]); setWorkspaceMode(mode); setActiveRehearsalId(record.id); setSaved(true) })
   }
   const openRehearsal = (record: RehearsalRecord) => {
     snapshotLocked.current = true
-    setActiveRehearsalId(record.id); setSelected(record.symbol); setDirection(record.direction); setQuantity(record.quantity); setCollateral(record.collateral); setLossBudget(record.lossBudget); setEndpointMove(record.endpointMove); setDipMove(record.dipMove); setThesis(record.thesis); setTicker(record.ticker); setCandles(record.candles); setProviderState(record.providerState); setTab('rehearse')
+    setActiveRehearsalId(record.id); setSelected(record.symbol); setDirection(record.direction); setQuantity(record.quantity); setCollateral(record.collateral); setLossBudget(record.lossBudget); setEndpointMove(record.endpointMove); setDipMove(record.dipMove); setThesis(record.thesis); setResearchSources(record.researchSources ?? []); setTicker(record.ticker); setCandles(record.candles); setProviderState(record.providerState); setTab('rehearse')
+  }
+  const addSource = () => {
+    try {
+      const parsed = new URL(sourceUrl.trim())
+      if (parsed.protocol !== 'https:') throw new Error('Use an HTTPS source URL.')
+      if (!sourceTitle.trim() || !sourceNote.trim()) throw new Error('Add a title and a short note.')
+      if (researchSources.length >= 6) throw new Error('A rehearsal can hold up to six sources.')
+      setResearchSources((current) => [...current, { id: globalThis.crypto?.randomUUID?.() ?? `source-${Date.now()}`, title: sourceTitle.trim(), url: parsed.toString(), stance: sourceStance, note: sourceNote.trim() }])
+      setSourceTitle(''); setSourceUrl(''); setSourceNote(''); setSourceError('')
+    } catch (error) { setSourceError(error instanceof Error ? error.message : 'Source could not be added.') }
+  }
+  const downloadReport = (format: 'json' | 'csv' | 'pdf') => {
+    if (format === 'pdf') { window.print(); return }
+    if (workspaceMode === 'server' && activeRehearsalId) { const link = document.createElement('a'); link.href = `/api/workspace/rehearsals/${encodeURIComponent(activeRehearsalId)}/export?format=${format}`; link.click(); return }
+    const payload = { symbol: selected, direction, quantity, collateral, lossBudget, endpointMove, dipMove, thesis, researchSources, calm: calmResult, shock: shockResult, exportedAt: new Date().toISOString(), mode: 'browser-fallback' }
+    const content = format === 'json' ? JSON.stringify(payload, null, 2) : ['field,value', ...Object.entries(payload).filter(([key]) => typeof valueToText(payload[key as keyof typeof payload]) === 'string').map(([key, value]) => `"${key}","${valueToText(value).replaceAll('"', '""')}"`)].join('\n')
+    const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/csv' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `veltryn-${selected}.${format}`; link.click(); URL.revokeObjectURL(link.href)
   }
 
   return <div className="app-shell">
@@ -97,11 +121,12 @@ export function App() {
             <div className="field-grid"><label>Quantity<input type="number" min="0.01" step="0.01" value={quantity} onChange={updateNumber(setQuantity)} /></label><label>Collateral<div className="input-wrap"><input type="number" min="1" step="10" value={collateral} onChange={updateNumber(setCollateral)} /><span className="input-suffix">USDT</span></div></label></div>
             <div className="field-grid"><label>Loss budget<div className="input-wrap"><input type="number" min="1" step="10" value={lossBudget} onChange={updateNumber(setLossBudget)} /><span className="input-suffix">USDT</span></div></label><label>Thesis endpoint<div className="input-wrap"><input type="number" min="0.01" max="0.5" step="0.01" value={endpointMove} onChange={updateNumber(setEndpointMove)} /><span className="input-suffix">%</span></div></label></div>
             <label className="thesis-label">Your thesis<textarea value={thesis} onChange={(event) => setThesis(event.target.value)} /></label>
+            <div className="research-box"><div className="research-heading"><div><span className="evidence-label">03 / RESEARCH CONTEXT</span><strong>Attach what you know.</strong></div><span>{researchSources.length}/6</span></div><p>Link supporting, counter, or contextual evidence. Veltryn stores references; it does not silently endorse them.</p><div className="source-form"><input aria-label="Source title" placeholder="Source title" value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} /><input aria-label="Source URL" placeholder="https://..." value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} /><div className="source-form-row"><select aria-label="Evidence stance" value={sourceStance} onChange={(event) => setSourceStance(event.target.value as ResearchSource['stance'])}><option value="supports">Supports thesis</option><option value="counters">Counters thesis</option><option value="context">Context only</option></select><input aria-label="Source note" placeholder="What does it establish?" value={sourceNote} onChange={(event) => setSourceNote(event.target.value)} /><button className="outline-button" onClick={addSource} disabled={researchSources.length >= 6}>Add</button></div></div>{sourceError && <small className="source-error">{sourceError}</small>}{researchSources.length > 0 && <div className="source-list">{researchSources.map((source) => <div className="source-row" key={source.id}><div><strong>{source.title}</strong><span>{source.note}</span><a href={source.url} target="_blank" rel="noreferrer">{source.url}</a></div><button className="icon-button" aria-label={`Remove ${source.title}`} onClick={() => setResearchSources((current) => current.filter((item) => item.id !== source.id))}><X size={15} /></button></div>)}</div>}</div>
             <div className="plan-foot"><span>Estimated leverage <strong>{leverage.toFixed(2)}×</strong></span><span>Entry <strong>{money(liveEntry)}</strong></span></div>
             <button className="primary-button" onClick={() => setShowMethod(true)}><Sparkles size={16} /> Stress-test this position <span>↗</span></button>
           </aside>
           <section className="results-column"><div className="market-strip panel"><div className="market-id"><span className="asset-icon">{selected.slice(0, 2)}</span><div><strong>{selected.replace('USDT', '')} / USDT</strong><span>Bitget stock perpetual · {providerState === 'live' ? 'observed now' : 'illustrative snapshot'}</span></div></div><div className="market-stat"><span>Mark price</span><strong>{money(ticker ? Number(ticker.markPrice) : liveEntry)}</strong></div><div className="market-stat"><span>Funding / 8h</span><strong className={Number(ticker?.fundingRate ?? 0) > 0 ? 'warning-text' : ''}>{ticker ? pct(Number(ticker.fundingRate)) : '0.00%'}</strong></div><div className="market-stat"><span>Data captured</span><strong>{ticker ? new Date(Number(ticker.ts)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Example'}</strong></div></div>
-            <div className="result-header"><div><span className="step-label">02 / PATH TEST</span><h2>Same destination. Different survival.</h2><p>Both scenarios finish at your {pct(endpointMove)} thesis endpoint. The dashed path tests the shock you must survive first.</p></div><div className="result-actions"><button className="icon-button" aria-label="Save rehearsal" onClick={saveCurrent}><Save size={17} /></button><button className="outline-button" onClick={saveCurrent}><Copy size={15} /> {activeRehearsalId ? 'Save revision' : 'Save rehearsal'}</button></div></div>
+            <div className="result-header"><div><span className="step-label">02 / PATH TEST</span><h2>Same destination. Different survival.</h2><p>Both scenarios finish at your {pct(endpointMove)} thesis endpoint. The dashed path tests the shock you must survive first.</p></div><div className="result-actions"><button className="icon-button" aria-label="Save rehearsal" onClick={saveCurrent}><Save size={17} /></button><button className="outline-button" onClick={saveCurrent}><Copy size={15} /> {activeRehearsalId ? 'Save revision' : 'Save rehearsal'}</button><button className="icon-button" aria-label="Export JSON" onClick={() => downloadReport('json')}>JSON</button><button className="icon-button" aria-label="Export CSV" onClick={() => downloadReport('csv')}>CSV</button><button className="icon-button" aria-label="Print or save PDF" onClick={() => downloadReport('pdf')}>PDF</button></div></div>
             <div className="chart-card panel"><div className="chart-meta"><div className="legend"><span><i className="legend-line calm" />Calm path</span><span><i className="legend-line shock" />Shock → recovery</span></div><span className="chart-tag">MODELED PATHS</span></div><Sparkline calm={calm.map((p) => p.price)} shock={shock.map((p) => p.price)} /><div className="chart-axis"><span>Entry</span><span>Shock</span><span>Reprice</span><span>Thesis window</span></div></div>
             <div className="outcome-grid"><OutcomeCard label="Calm path" result={calmResult} color="teal" /><OutcomeCard label="Shock → recovery" result={shockResult} color="amber" /></div>
             <div className="evidence-card panel"><div className="evidence-heading"><div className="source-icon"><Database size={16} /></div><div><strong>What the model used</strong><span>Evidence is separated from the scenario assumptions.</span></div><button className="text-button" onClick={() => setTab('methodology')}>View method <ArrowUpRight size={14} /></button></div><div className="evidence-grid"><div><span className="evidence-label">Observed from Bitget</span><strong>{ticker ? 'Mark, index, ticker and funding' : 'Example snapshot only'}</strong><small>{ticker ? 'Live public market endpoint · captured now' : 'Provider unavailable for this session'}</small></div><div><span className="evidence-label">Modeled assumption</span><strong>{pct(dipMove)} adverse dip</strong><small>Deterministic path · not a forecast</small></div><div><span className="evidence-label">Historical context</span><strong>{historicalReturn === null ? 'Insufficient history' : `${pct(historicalReturn)} window move`}</strong><small>{candles.length ? `${candles.length} hourly candles observed` : 'No replay loaded'}</small></div></div></div>

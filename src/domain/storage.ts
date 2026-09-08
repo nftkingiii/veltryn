@@ -20,7 +20,12 @@ export type RehearsalRecord = {
   providerState: 'live' | 'fallback'
   ticker: Ticker | null
   candles: Candle[]
+  researchSources: ResearchSource[]
+  revisions?: RehearsalRevision[]
 }
+
+export type ResearchSource = { id: string; title: string; url: string; stance: 'supports' | 'counters' | 'context'; note: string }
+export type RehearsalRevision = Omit<RehearsalRecord, 'revisions'> & { revision: number }
 
 function makeId() {
   return globalThis.crypto?.randomUUID?.() ?? `r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -37,7 +42,7 @@ export function loadRehearsals(): RehearsalRecord[] {
   }
 }
 
-export function persistRehearsal(record: Omit<RehearsalRecord, 'id' | 'createdAt' | 'updatedAt' | 'revision'>, existingId?: string) {
+export function persistRehearsal(record: Omit<RehearsalRecord, 'id' | 'createdAt' | 'updatedAt' | 'revision' | 'revisions'>, existingId?: string) {
   const current = loadRehearsals()
   const previous = existingId ? current.find((item) => item.id === existingId) : undefined
   const now = new Date().toISOString()
@@ -69,7 +74,7 @@ export async function loadRehearsalsWithFallback() {
   }
 }
 
-export async function persistRehearsalWithFallback(record: Omit<RehearsalRecord, 'id' | 'createdAt' | 'updatedAt' | 'revision'>, existingId?: string) {
+export async function persistRehearsalWithFallback(record: Omit<RehearsalRecord, 'id' | 'createdAt' | 'updatedAt' | 'revision' | 'revisions'>, existingId?: string) {
   const local = persistRehearsal(record, existingId)
   try {
     const remote = await persistRemoteRehearsal(record, existingId)
