@@ -36,4 +36,4 @@ The remaining product work is tracked in the private execution plan: server-back
 
 ### Persistence
 
-The server stores workspace records in JSON. Local development uses `.private/workspace-data.json`; a Railway deployment with a mounted volume should set `VELTRYN_DATA_FILE=/data/workspace-data.json`. This is durable for a single Railway replica and preserves the existing session-scoped ownership and share revocation model. Multi-instance operation should move the same store contract to a managed database.
+The server stores workspace records in SQLite. Local development uses `.private/veltryn.sqlite`; the Railway deployment uses `/data/veltryn.sqlite` on the mounted volume. The first SQLite boot can migrate the previous JSON store from `VELTRYN_DATA_FILE`. This is durable for a single Railway replica and preserves the existing session-scoped ownership and share revocation model. Multi-instance operation should move the same store contract to a managed database.

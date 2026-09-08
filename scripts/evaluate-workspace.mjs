@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 const port = 8899
 const dataDir = await mkdtemp(join(tmpdir(), 'veltryn-eval-'))
-const child = spawn(process.execPath, ['server/index.mjs'], { env: { ...process.env, PORT: String(port), VELTRYN_DATA_FILE: join(dataDir, 'workspace.json'), VELTRYN_VERSION: 'evaluation' }, stdio: ['ignore', 'pipe', 'pipe'] })
+const child = spawn(process.execPath, ['server/index.mjs'], { env: { ...process.env, PORT: String(port), VELTRYN_SQLITE_FILE: join(dataDir, 'workspace.sqlite'), VELTRYN_DATA_FILE: join(dataDir, 'workspace.json'), VELTRYN_VERSION: 'evaluation' }, stdio: ['ignore', 'pipe', 'pipe'] })
 const base = `http://127.0.0.1:${port}`
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 for (let i = 0; i < 30; i += 1) { try { if ((await fetch(`${base}/healthz`)).ok) break } catch {} await wait(100) }
@@ -25,5 +25,7 @@ const revoked = await request(`/api/workspace/rehearsals/${record.record.id}/sha
 const publicAfter = await fetch(`${base}/api/public/reports/${share.token}`)
 const result = { health: health.status === 200, sessionScopedRecord: created.status === 200, disallowedSourceRejected: disallowed.status === 422, publicShareBeforeRevocation: publicBefore.status === 200, revocationSucceeded: revoked.status === 200, publicShareAfterRevocation: publicAfter.status === 404 }
 console.log(JSON.stringify(result, null, 2))
-child.kill(); await rm(dataDir, { recursive: true, force: true })
+child.kill()
+await new Promise((resolve) => child.once('exit', resolve))
+await rm(dataDir, { recursive: true, force: true })
 if (Object.values(result).some((value) => !value)) process.exitCode = 1

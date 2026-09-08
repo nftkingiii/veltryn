@@ -14,9 +14,9 @@ Each record retains:
 
 Opening a saved record pins its captured snapshot. An in-flight provider request cannot overwrite it. Selecting a different instrument, resetting, or starting a new rehearsal unlocks live retrieval again.
 
-The API uses a random HttpOnly, SameSite session cookie and stores only a SHA-256 session digest. Every read, update, and delete is filtered by that session digest; session identifiers are not returned in public JSON. The current store is a local JSON file for development, not a production database.
+The API uses a random HttpOnly, SameSite session cookie and stores only a SHA-256 session digest. Every read, update, and delete is filtered by that session digest; session identifiers are not returned in public JSON. The server-backed store is SQLite: `.private/veltryn.sqlite` locally and `/data/veltryn.sqlite` on Railway. SQLite uses WAL mode and indexed session/rehearsal queries. The first boot can migrate the previous JSON store.
 
-The browser fallback is anonymous browser persistence, not an account-backed workspace. It does not provide multi-device recovery, share links, or server durability. Production deployment still needs a managed database, HTTPS cookie mode, origin/CSRF protection for write requests, rate limiting, and operational backups.
+The browser fallback is anonymous browser persistence, not an account-backed workspace. It does not provide multi-device recovery, share links, or server durability. The mounted SQLite deployment is durable for one replica; production still needs a managed database for horizontal scaling, plus origin/CSRF protection for write requests, rate limiting, and operational backups.
 
 The Rehearse view also offers a print-ready PDF path through the browser's native print dialog. The printed view includes the selected scenario, chart, evidence labels, and attached sources; it does not claim server-side PDF generation.
 

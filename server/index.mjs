@@ -1,26 +1,48 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import { stat, readFile as readFileBinary } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const dataFile = resolve(process.env.VELTRYN_DATA_FILE ?? `${root}/.private/workspace-data.json`)
+const sqliteFile = resolve(process.env.VELTRYN_SQLITE_FILE ?? `${root}/.private/veltryn.sqlite`)
+const legacyDataFile = resolve(process.env.VELTRYN_DATA_FILE ?? `${root}/.private/workspace-data.json`)
 const port = Number(process.env.PORT ?? 8787)
 const host = process.env.HOST ?? '0.0.0.0'
 const maxBody = 64 * 1024
 const maxRecords = 50
 const version = process.env.VELTRYN_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? 'dev'
-const persistenceMode = process.env.VELTRYN_DATA_FILE?.startsWith('/data/') ? 'volume-store' : 'local-store'
+const persistenceMode = sqliteFile.startsWith('/data/') ? 'sqlite-volume' : 'sqlite-local'
+await mkdir(dirname(sqliteFile), { recursive: true })
+const database = new DatabaseSync(sqliteFile)
+database.exec(`
+  PRAGMA journal_mode = WAL;
+  CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS rehearsals (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL);
+  CREATE INDEX IF NOT EXISTS rehearsals_session_updated ON rehearsals(session_id, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS shares (token TEXT PRIMARY KEY, rehearsal_id TEXT NOT NULL, session_id TEXT NOT NULL, created_at TEXT NOT NULL, revoked_at TEXT);
+`)
 
-let store = { sessions: {}, rehearsals: {}, shares: {} }
-try { store = JSON.parse(await readFile(dataFile, 'utf8')) } catch { await persist() }
-store.sessions ??= {}; store.rehearsals ??= {}; store.shares ??= {}
-
-async function persist() {
-  await mkdir(dirname(dataFile), { recursive: true })
-  await writeFile(dataFile, JSON.stringify(store, null, 2), 'utf8')
+function parseJson(value) { return JSON.parse(value) }
+function legacyStore() {
+  try { return JSON.parse(readFileSync(legacyDataFile, 'utf8')) } catch { return null }
+}
+if (sqliteFile !== legacyDataFile && database.prepare('SELECT COUNT(*) AS count FROM sessions').get().count === 0) {
+  const legacy = legacyStore()
+  if (legacy) {
+    const migrate = database.transaction(() => {
+      const sessionInsert = database.prepare('INSERT OR IGNORE INTO sessions (id, created_at) VALUES (?, ?)')
+      for (const item of Object.values(legacy.sessions ?? {})) sessionInsert.run(item.id, item.createdAt)
+      const rehearsalInsert = database.prepare('INSERT OR IGNORE INTO rehearsals (id, session_id, updated_at, data) VALUES (?, ?, ?, ?)')
+      for (const item of Object.values(legacy.rehearsals ?? {})) rehearsalInsert.run(item.id, item.sessionId, item.updatedAt, JSON.stringify(item))
+      const shareInsert = database.prepare('INSERT OR IGNORE INTO shares (token, rehearsal_id, session_id, created_at, revoked_at) VALUES (?, ?, ?, ?, ?)')
+      for (const [token, item] of Object.entries(legacy.shares ?? {})) shareInsert.run(token, item.rehearsalId, item.sessionId, item.createdAt, item.revokedAt ?? null)
+    })
+    migrate()
+  }
 }
 
 function digest(value) { return createHash('sha256').update(value).digest('hex') }
@@ -28,12 +50,16 @@ function cookieValue(request) { return request.headers.cookie?.match(/(?:^|; )ve
 function session(request, response) {
   const raw = cookieValue(request)
   const key = raw && digest(raw)
-  if (key && store.sessions[key]) return store.sessions[key]
+  if (key) {
+    const existing = database.prepare('SELECT id, created_at AS createdAt FROM sessions WHERE id = ?').get(key)
+    if (existing) return existing
+  }
   const token = randomBytes(32).toString('base64url')
   const sessionId = digest(token)
-  store.sessions[sessionId] = { id: sessionId, createdAt: new Date().toISOString() }
+  const createdAt = new Date().toISOString()
+  database.prepare('INSERT INTO sessions (id, created_at) VALUES (?, ?)').run(sessionId, createdAt)
   response.setHeader('Set-Cookie', `veltryn_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`)
-  return store.sessions[sessionId]
+  return { id: sessionId, createdAt }
 }
 
 function send(response, status, body) {
@@ -98,7 +124,11 @@ function toPublic(record) {
   const { sessionId, ...publicRecord } = record
   return publicRecord
 }
-function owned(sessionId) { return Object.values(store.rehearsals).filter((record) => record.sessionId === sessionId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(toPublic) }
+function readRehearsal(row) { return row ? parseJson(row.data) : undefined }
+function getRehearsal(id) { return readRehearsal(database.prepare('SELECT data FROM rehearsals WHERE id = ?').get(id)) }
+function owned(sessionId) { return database.prepare('SELECT data FROM rehearsals WHERE session_id = ? ORDER BY updated_at DESC').all(sessionId).map((row) => toPublic(parseJson(row.data))) }
+function ownedCount(sessionId) { return database.prepare('SELECT COUNT(*) AS count FROM rehearsals WHERE session_id = ?').get(sessionId).count }
+function saveRehearsal(record, sessionId) { database.prepare('INSERT INTO rehearsals (id, session_id, updated_at, data) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET session_id = excluded.session_id, updated_at = excluded.updated_at, data = excluded.data').run(record.id, sessionId, record.updatedAt, JSON.stringify(record)) }
 const allowedSourceHosts = new Set(['bitget.com', 'www.bitget.com', 'bitget.cloud', 'www.bitget.cloud'])
 function sourceUrl(raw) {
   const url = new URL(raw)
@@ -131,8 +161,8 @@ const server = http.createServer(async (request, response) => {
     if (await staticFile(request, response)) return
     if (request.url?.startsWith('/api/public/reports/')) {
       const token = new URL(request.url, 'http://localhost').pathname.split('/').at(-1)
-      const share = store.shares[token]
-      const record = share && store.rehearsals[share.rehearsalId]
+      const share = database.prepare('SELECT rehearsal_id AS rehearsalId, created_at AS createdAt, revoked_at AS revokedAt FROM shares WHERE token = ?').get(token)
+      const record = share && getRehearsal(share.rehearsalId)
       if (!share || share.revokedAt || !record) return send(response, 404, { error: 'report_not_found' })
       return send(response, 200, { record: toPublic(record), publishedAt: share.createdAt })
     }
@@ -149,35 +179,36 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && !id) {
       const input = await body(request)
       if (!valid(input)) return send(response, 422, { error: 'invalid_rehearsal' })
-      const previous = input.id ? store.rehearsals[input.id] : undefined
-      if (previous && previous.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
-      if (!previous && owned(current.id).length >= maxRecords) return send(response, 429, { error: 'workspace_limit' })
+      const previous = input.id ? getRehearsal(input.id) : undefined
+      const previousRow = input.id ? database.prepare('SELECT session_id AS sessionId FROM rehearsals WHERE id = ?').get(input.id) : undefined
+      if (previous && previousRow?.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
+      if (!previous && ownedCount(current.id) >= maxRecords) return send(response, 429, { error: 'workspace_limit' })
       const now = new Date().toISOString()
       const revision = (previous?.revision ?? 0) + 1
       const revisionSnapshot = { ...input, id: previous?.id ?? randomUUID(), createdAt: previous?.createdAt ?? now, updatedAt: now, revision }
-      const saved = { ...revisionSnapshot, id: revisionSnapshot.id, sessionId: current.id, revisions: [...(previous?.revisions ?? []), revisionSnapshot] }
-      store.rehearsals[saved.id] = saved
-      await persist()
+      const saved = { ...revisionSnapshot, id: revisionSnapshot.id, revisions: [...(previous?.revisions ?? []), revisionSnapshot] }
+      saveRehearsal(saved, current.id)
       return send(response, 200, { record: toPublic(saved), mode: 'server' })
     }
     if (request.method === 'POST' && id && action === 'share') {
-      const record = store.rehearsals[id]
-      if (!record || record.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
+      const record = getRehearsal(id)
+      const owner = database.prepare('SELECT session_id AS sessionId FROM rehearsals WHERE id = ?').get(id)
+      if (!record || owner?.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
       const token = randomBytes(24).toString('base64url')
-      store.shares[token] = { rehearsalId: id, sessionId: current.id, createdAt: new Date().toISOString() }
-      await persist()
+      database.prepare('INSERT INTO shares (token, rehearsal_id, session_id, created_at) VALUES (?, ?, ?, ?)').run(token, id, current.id, new Date().toISOString())
       return send(response, 200, { token, url: `/report/${token}` })
     }
     if (request.method === 'DELETE' && id && action === 'share') {
-      const record = store.rehearsals[id]
-      if (!record || record.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
-      for (const share of Object.values(store.shares)) if (share.rehearsalId === id && !share.revokedAt) share.revokedAt = new Date().toISOString()
-      await persist()
+      const record = getRehearsal(id)
+      const owner = database.prepare('SELECT session_id AS sessionId FROM rehearsals WHERE id = ?').get(id)
+      if (!record || owner?.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
+      database.prepare('UPDATE shares SET revoked_at = ? WHERE rehearsal_id = ? AND revoked_at IS NULL').run(new Date().toISOString(), id)
       return send(response, 200, { revoked: true })
     }
     if (request.method === 'GET' && id && action === 'export') {
-      const record = store.rehearsals[id]
-      if (!record || record.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
+      const record = getRehearsal(id)
+      const owner = database.prepare('SELECT session_id AS sessionId FROM rehearsals WHERE id = ?').get(id)
+      if (!record || owner?.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
       const format = url.searchParams.get('format') === 'csv' ? 'csv' : 'json'
       const publicRecord = toPublic(record)
       if (format === 'json') {
@@ -191,10 +222,10 @@ const server = http.createServer(async (request, response) => {
       return response.end(csv)
     }
     if (request.method === 'DELETE' && id) {
-      const record = store.rehearsals[id]
-      if (!record || record.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
-      delete store.rehearsals[id]
-      await persist()
+      const record = getRehearsal(id)
+      const owner = database.prepare('SELECT session_id AS sessionId FROM rehearsals WHERE id = ?').get(id)
+      if (!record || owner?.sessionId !== current.id) return send(response, 404, { error: 'not_found' })
+      database.prepare('DELETE FROM rehearsals WHERE id = ?').run(id)
       return send(response, 200, { records: owned(current.id), mode: 'server' })
     }
     return send(response, 404, { error: 'not_found' })
@@ -204,3 +235,5 @@ const server = http.createServer(async (request, response) => {
 })
 
 server.listen(port, host, () => console.log(`Veltryn workspace API listening on ${host}:${port}`))
+process.once('SIGTERM', () => server.close(() => { database.close(); process.exit(0) }))
+process.once('SIGINT', () => server.close(() => { database.close(); process.exit(0) }))
