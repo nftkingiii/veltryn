@@ -12,7 +12,7 @@ const host = process.env.HOST ?? '0.0.0.0'
 const maxBody = 64 * 1024
 const maxRecords = 50
 const version = process.env.VELTRYN_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? 'dev'
-const persistenceMode = dataFile.startsWith(resolve('/data')) ? 'volume-store' : 'local-store'
+const persistenceMode = process.env.VELTRYN_DATA_FILE?.startsWith('/data/') ? 'volume-store' : 'local-store'
 
 let store = { sessions: {}, rehearsals: {}, shares: {} }
 try { store = JSON.parse(await readFile(dataFile, 'utf8')) } catch { await persist() }
