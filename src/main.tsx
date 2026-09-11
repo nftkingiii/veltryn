@@ -4,5 +4,7 @@ import './styles.css'
 import './desk.css'
 import './instruments.css'
 import { App } from './web/App'
+import { Landing } from './web/Landing'
+import './landing.css'
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode>{window.location.pathname === '/' ? <Landing /> : <App />}</StrictMode>)

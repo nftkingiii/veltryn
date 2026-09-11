@@ -75,7 +75,8 @@ async function staticFile(request, response) {
   if (request.method !== 'GET') return false
   const url = new URL(request.url ?? '/', 'http://localhost')
   if (url.pathname.startsWith('/api/') || url.pathname === '/healthz') return false
-  const requested = url.pathname === '/' ? '/index.html' : url.pathname
+  const documentRoute = ['/', '/app', '/app/'].includes(url.pathname) || /^\/report\/[^/]+$/.test(url.pathname)
+  const requested = documentRoute ? '/index.html' : url.pathname
   const distRoot = resolve(root, 'dist')
   const file = resolve(distRoot, `.${requested}`)
   if (!file.startsWith(distRoot)) return false

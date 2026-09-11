@@ -107,7 +107,7 @@ export function App() {
 
   return <div className="app-shell">
     <header className="topbar">
-      <a className="brand" href="#top" aria-label="Veltryn home"><img className="brand-logo" src="/veltryn.svg" alt="" width="34" height="34" /><span>veltryn</span></a>
+      <a className="brand" href="/" aria-label="Veltryn home"><img className="brand-logo" src="/veltryn.svg" alt="" width="34" height="34" /><span>veltryn</span></a>
       <nav className="main-nav" aria-label="Primary navigation">
         <button className={tab === 'rehearse' ? 'active' : ''} onClick={() => setTab('rehearse')}>Rehearse</button>
         <button className={tab === 'library' ? 'active' : ''} onClick={() => setTab('library')}>Library</button>
