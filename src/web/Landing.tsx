@@ -17,7 +17,7 @@ export function Landing() {
         </div>
         <div className="landing-art">
           <div className="landing-art-heading"><span>ONE THESIS. TWO PATHS.</span><span>ILLUSTRATIVE REHEARSAL</span></div>
-          <div className="landing-instrument"><img src="/instruments/nvda.png" width="32" height="32" alt="" /><div><strong>NVDA <span>/ USDT</span></strong><small>A look beyond the endpoint</small></div><span className="landing-direction">Long →</span></div>
+          <div className="landing-instrument"><img src="/instruments/NVDA.png" width="32" height="32" alt="" onError={(event) => { event.currentTarget.style.display = 'none' }} /><div><strong>NVDA <span>/ USDT</span></strong><small>A look beyond the endpoint</small></div><span className="landing-direction">Long →</span></div>
           <svg className="landing-chart" viewBox="0 0 620 330" role="img" aria-labelledby="landing-chart-title landing-chart-desc">
             <title id="landing-chart-title">A calm path and a shock-recovery path</title>
             <desc id="landing-chart-desc">Illustrative candles lead to an entry point. Two modeled paths reach the same endpoint, but the shock-recovery path drops below a loss-budget line first. This is not a forecast.</desc>
