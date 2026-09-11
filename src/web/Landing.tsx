@@ -5,19 +5,19 @@ export function Landing() {
     <a className="landing-skip" href="#landing-content">Skip to content</a>
     <header className="landing-nav">
       <a href="/" className="landing-brand" aria-label="Veltryn home"><img src="/veltryn.svg" alt="" width="36" height="36" />veltryn</a>
-      <a className="landing-nav-link" href="/app">Open app <span aria-hidden="true">↗</span></a>
+      <a className="landing-nav-link" href="/app">Open app <span aria-hidden="true">→</span></a>
     </header>
     <main id="landing-content" className="landing-main">
       <section className="landing-hero" aria-labelledby="landing-title">
         <div className="landing-copy">
           <h1 id="landing-title">The trade can wait.<br /><em>Rehearse it first.</em></h1>
           <p>Your thesis might be right. The path could still hurt.<br className="landing-desktop-break" /> Explore the risk before you put money on the line.</p>
-          <a className="landing-cta" href="/app">Rehearse a trade <span aria-hidden="true">↗</span></a>
+          <a className="landing-cta" href="/app">Rehearse a trade <span aria-hidden="true">→</span></a>
           <span className="landing-reassurance">No orders placed. Just a clearer perspective.</span>
         </div>
         <div className="landing-art">
           <div className="landing-art-heading"><span>ONE THESIS. TWO PATHS.</span><span>ILLUSTRATIVE REHEARSAL</span></div>
-          <div className="landing-instrument"><img src="/instruments/nvda.png" width="32" height="32" alt="" /><div><strong>NVDA <span>/ USDT</span></strong><small>A look beyond the endpoint</small></div><span className="landing-direction">Long ↗</span></div>
+          <div className="landing-instrument"><img src="/instruments/nvda.png" width="32" height="32" alt="" /><div><strong>NVDA <span>/ USDT</span></strong><small>A look beyond the endpoint</small></div><span className="landing-direction">Long →</span></div>
           <svg className="landing-chart" viewBox="0 0 620 330" role="img" aria-labelledby="landing-chart-title landing-chart-desc">
             <title id="landing-chart-title">A calm path and a shock-recovery path</title>
             <desc id="landing-chart-desc">Illustrative candles lead to an entry point. Two modeled paths reach the same endpoint, but the shock-recovery path drops below a loss-budget line first. This is not a forecast.</desc>
