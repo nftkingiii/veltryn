@@ -2,7 +2,16 @@
 
 Live demo: https://veltryn-production.up.railway.app/
 
-Verified on 2026-09-08:
+Verified on 2026-09-12:
+
+- intended source revision: `7b2606d` (`Fix landing instrument logo asset path`);
+- Railway deployment: latest deployment status `SUCCESS`;
+- `GET /healthz` returned `200` with `version: 7b2606d` and `readiness: sqlite-volume`;
+- `GET /`, `/app`, and `/report/smoke` returned `200`;
+- `/instruments/NVDA.png` returned `200` after correcting the case-sensitive asset path;
+- a clean production browser loaded the landing-page logo and NVDA logo, then entered `/app` successfully.
+
+Earlier verified evidence:
 
 - intended source revision: `847d484` (`Support SQLite migration on Node 22`);
 - Railway deployment: `1a4993a0-32e1-493b-8c38-129abd70d077`, status `SUCCESS`;

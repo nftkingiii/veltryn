@@ -4,7 +4,7 @@ Rehearse the trade.
 
 Veltryn is a planned AI research workbench for stress-testing proposed Bitget stock-perpetual positions before a human decides to trade. It connects a stated thesis to market evidence, historical price paths, and explicit position assumptions.
 
-Status: M2 browser-persistent rehearsal slice. The local app has a read-only Bitget market adapter, deterministic path stress test, explicit evidence/assumption labeling, and a Library that persists captured rehearsals in the browser.
+Status: Deployed evaluation milestone. The app has a branded landing page, read-only Bitget market data, deterministic path stress testing, explicit evidence/assumption labeling, SQLite-backed anonymous workspaces, source verification, public reports, exports, and a Library.
 
 The product will compare how funding, liquidity, leverage, and the path of prices affect a proposed position, even when its predicted final direction is correct. Historical observations and hypothetical scenarios will remain distinguishable.
 
@@ -32,7 +32,7 @@ node node_modules/vitest/vitest.mjs run
 node node_modules/vite/bin/vite.js build
 ```
 
-The remaining product work is tracked in the private execution plan: server-backed anonymous workspaces, research retrieval, AI explanation, deployment, and evidence capture. Browser storage is deliberately not presented as multi-device or cloud persistence.
+The remaining product work is tracked in the private execution plan: a real external AI explanation layer, historical analogue retrieval, authenticated users, and metrics. The current reasoning engine is deterministic and labeled as modeled; it is not presented as a live AI forecast. Browser storage remains a fallback, not multi-device cloud persistence.
 
 ### Persistence
 
