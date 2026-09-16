@@ -21,6 +21,7 @@ const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim()
 const bitgetKey = process.env.BITGET_API_KEY?.trim()
 const bitgetSecret = process.env.BITGET_API_SECRET?.trim()
 const bitgetPassphrase = process.env.BITGET_API_PASSPHRASE?.trim()
+const bitgetDemo = process.env.BITGET_DEMO === 'true'
 const aiRequests = new Map()
 await mkdir(dirname(sqliteFile), { recursive: true })
 const database = new DatabaseSync(sqliteFile)
@@ -150,7 +151,7 @@ async function signedBitgetGet(path, params) {
   const signature = createHmac('sha256', bitgetSecret).update(`${timestamp}GET${requestPath}`).digest('base64')
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000)
   try {
-    const result = await fetch(`https://api.bitget.com${requestPath}`, { signal: controller.signal, headers: { 'ACCESS-KEY': bitgetKey, 'ACCESS-SIGN': signature, 'ACCESS-TIMESTAMP': timestamp, 'ACCESS-PASSPHRASE': bitgetPassphrase, 'locale': 'en-US', accept: 'application/json' } })
+    const result = await fetch(`https://api.bitget.com${requestPath}`, { signal: controller.signal, headers: { 'ACCESS-KEY': bitgetKey, 'ACCESS-SIGN': signature, 'ACCESS-TIMESTAMP': timestamp, 'ACCESS-PASSPHRASE': bitgetPassphrase, 'locale': 'en-US', ...(bitgetDemo ? { paptrading: '1' } : {}), accept: 'application/json' } })
     const payload = await result.json()
     if (!result.ok || payload.code !== '00000') return { status: 'error', reason: 'BITGET_PRIVATE_API_REJECTED', code: String(payload.code ?? 'unknown').slice(0, 32) }
     return { status: 'ready', liqPrice: Number(payload.data?.liqPrice), observedAt: new Date().toISOString() }
