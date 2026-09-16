@@ -16,6 +16,9 @@ const maxBody = 64 * 1024
 const maxRecords = 50
 const version = process.env.VELTRYN_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? 'dev'
 const persistenceMode = sqliteFile.startsWith('/data/') ? 'sqlite-volume' : 'sqlite-local'
+const anthropicModel = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
+const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim()
+const aiRequests = new Map()
 await mkdir(dirname(sqliteFile), { recursive: true })
 const database = new DatabaseSync(sqliteFile)
 database.exec(`
@@ -69,6 +72,39 @@ function session(request, response) {
 function send(response, status, body) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin' })
   response.end(JSON.stringify(body))
+}
+
+function aiQuota(sessionId) {
+  const now = Date.now(); const windowMs = 10 * 60 * 1000
+  const recent = (aiRequests.get(sessionId) ?? []).filter((at) => now - at < windowMs)
+  if (recent.length >= 5) return false
+  recent.push(now); aiRequests.set(sessionId, recent); return true
+}
+
+function aiInput(value) {
+  if (!value || typeof value !== 'object' || typeof value.thesis !== 'string' || value.thesis.length > 2000) return false
+  if (!['long', 'short'].includes(value.direction) || typeof value.symbol !== 'string' || !/^[A-Z0-9]{3,20}USDT$/.test(value.symbol)) return false
+  if (!value.scenarios || typeof value.scenarios !== 'object' || !Array.isArray(value.sources) || value.sources.length > 6) return false
+  return JSON.stringify(value).length <= 24_000
+}
+
+function parseAiText(payload) {
+  const text = payload?.content?.find((item) => item.type === 'text')?.text?.trim()
+  if (!text) throw new Error('empty_ai_response')
+  const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  const parsed = JSON.parse(clean)
+  if (typeof parsed.summary !== 'string' || !Array.isArray(parsed.risks) || !Array.isArray(parsed.evidence) || !Array.isArray(parsed.questions)) throw new Error('invalid_ai_response')
+  return { summary: parsed.summary.slice(0, 1200), risks: parsed.risks.filter((item) => typeof item === 'string').slice(0, 4).map((item) => item.slice(0, 300)), evidence: parsed.evidence.filter((item) => typeof item === 'string').slice(0, 4).map((item) => item.slice(0, 300)), questions: parsed.questions.filter((item) => typeof item === 'string').slice(0, 4).map((item) => item.slice(0, 300)) }
+}
+
+async function explainWithAnthropic(input) {
+  if (!anthropicKey) return { status: 'unavailable', provider: 'none', reason: 'AI_PROVIDER_NOT_CONFIGURED' }
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 20_000)
+  try {
+    const result = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: controller.signal, headers: { 'content-type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: anthropicModel, max_tokens: 700, system: 'You are Veltryn\'s risk-explanation layer. Explain only the supplied deterministic rehearsal and observed evidence. Do not forecast, invent facts or citations, recompute authoritative numbers, give financial advice, or suggest execution. Return JSON only with string fields summary and arrays risks, evidence, questions.', messages: [{ role: 'user', content: `Explain this rehearsal using only this JSON. Preserve the distinction between observed market data and modeled paths. Cite source IDs only when present.\n${JSON.stringify(input)}` }] }) })
+    if (!result.ok) throw new Error('anthropic_unavailable')
+    return { status: 'ready', provider: 'anthropic', model: anthropicModel, explanation: parseAiText(await result.json()) }
+  } finally { clearTimeout(timer) }
 }
 
 async function staticFile(request, response) {
@@ -161,7 +197,7 @@ async function retrieveSource(raw) {
 
 const server = http.createServer(async (request, response) => {
   try {
-    if (request.url === '/healthz') return send(response, 200, { status: 'ok', version, readiness: persistenceMode })
+    if (request.url === '/healthz') return send(response, 200, { status: 'ok', version, readiness: persistenceMode, aiProvider: anthropicKey ? 'anthropic' : 'unconfigured', aiModel: anthropicKey ? anthropicModel : null })
     if (await proxyBitget(request, response)) return
     if (await staticFile(request, response)) return
     if (request.url?.startsWith('/api/public/reports/')) {
@@ -171,9 +207,15 @@ const server = http.createServer(async (request, response) => {
       if (!share || share.revokedAt || !record) return send(response, 404, { error: 'report_not_found' })
       return send(response, 200, { record: toPublic(record), publishedAt: share.createdAt })
     }
-    if (!request.url?.startsWith('/api/workspace/rehearsals') && request.url !== '/api/workspace/research/verify') return send(response, 404, { error: 'not_found' })
+    if (!request.url?.startsWith('/api/workspace/rehearsals') && request.url !== '/api/workspace/research/verify' && request.url !== '/api/workspace/ai/explain') return send(response, 404, { error: 'not_found' })
     const current = session(request, response)
     const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
+    if (request.method === 'POST' && url.pathname === '/api/workspace/ai/explain') {
+      if (!aiQuota(current.id)) return send(response, 429, { error: 'ai_rate_limited' })
+      const input = await body(request)
+      if (!aiInput(input)) return send(response, 422, { error: 'invalid_ai_input' })
+      try { return send(response, 200, await explainWithAnthropic(input)) } catch { return send(response, 502, { status: 'error', provider: 'anthropic', reason: 'AI_PROVIDER_UNAVAILABLE' }) }
+    }
     const collectionPath = '/api/workspace/rehearsals'
     const tail = url.pathname === collectionPath ? '' : url.pathname.slice(`${collectionPath}/`.length)
     const [id, action] = tail.split('/')

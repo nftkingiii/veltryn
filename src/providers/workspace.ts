@@ -36,3 +36,14 @@ export async function revokeRemoteShare(id: string) {
 export async function loadPublicReport(token: string) {
   return request<{ record: RehearsalRecord; publishedAt: string }>(`/api/public/reports/${encodeURIComponent(token)}`)
 }
+
+export type AiExplanationInput = {
+  symbol: string; direction: 'long' | 'short'; thesis: string
+  observed: { markPrice: number; fundingRate: number; candleCount: number; historicalReturn: number | null }
+  scenarios: Record<string, unknown>
+  sources: Array<{ id: string; title: string; stance: string; note: string; verification?: { status?: string; excerpt?: string } }>
+}
+export type AiExplanationResult = { status: 'ready' | 'unavailable' | 'error'; provider: string; model?: string; reason?: string; explanation?: { summary: string; risks: string[]; evidence: string[]; questions: string[] } }
+export async function explainRehearsal(input: AiExplanationInput) {
+  return request<AiExplanationResult>('/api/workspace/ai/explain', { method: 'POST', body: JSON.stringify(input) })
+}

@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowDownRight, ArrowUpRight, BookOpen, CircleHelp, Cloc
 import { getCandles, getTicker, listRwaInstruments, type Candle, type Instrument, type Ticker } from '../providers/bitget'
 import { makePath, stressPath, type Direction, type PositionPlan, type StressResult } from '../domain/engine'
 import { loadRehearsalsWithFallback, persistRehearsalWithFallback, removeRehearsalWithFallback, type RehearsalRecord, type ResearchSource } from '../domain/storage'
-import { createRemoteShare, loadPublicReport, revokeRemoteShare, verifyRemoteSource } from '../providers/workspace'
+import { createRemoteShare, explainRehearsal, loadPublicReport, revokeRemoteShare, verifyRemoteSource, type AiExplanationResult } from '../providers/workspace'
 
 const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toFixed(2)}`
 const pct = (value: number) => `${value < 0 ? '−' : ''}${Math.abs(value * 100).toFixed(2)}%`
@@ -42,6 +42,8 @@ export function App() {
   const [activeRehearsalId, setActiveRehearsalId] = useState<string | undefined>()
   const [saved, setSaved] = useState(false)
   const [showMethod, setShowMethod] = useState(false)
+  const [aiState, setAiState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'error'>('idle')
+  const [aiResult, setAiResult] = useState<AiExplanationResult | null>(null)
   const snapshotLocked = useRef(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -72,6 +74,14 @@ export function App() {
     if (saving) return
     setSaving(true)
     persistRehearsalWithFallback({ symbol: selected, direction, quantity, collateral, lossBudget, endpointMove, dipMove, thesis, providerState: ticker ? 'live' : 'fallback', ticker, candles, researchSources }, activeRehearsalId).then(({ record, mode }) => { setRehearsals((current) => [record, ...current.filter((item) => item.id !== record.id)]); setWorkspaceMode(mode); setActiveRehearsalId(record.id); setSaved(true) }).catch(() => setShareError('Could not save. Please try again.')).finally(() => setSaving(false))
+  }
+  const explainCurrent = async () => {
+    if (aiState === 'loading') return
+    setAiState('loading'); setAiResult(null)
+    try {
+      const result = await explainRehearsal({ symbol: selected, direction, thesis, observed: { markPrice: liveEntry, fundingRate: plan.fundingRate, candleCount: candles.length, historicalReturn }, scenarios: { calm: calmResult, shock: shockResult, endpointMove, dipMove }, sources: researchSources.map(({ id, title, stance, note, verification }) => ({ id, title, stance, note, verification })) })
+      setAiResult(result); setAiState(result.status === 'ready' ? 'ready' : result.status === 'unavailable' ? 'unavailable' : 'error')
+    } catch { setAiState('error'); setAiResult({ status: 'error', provider: 'anthropic', reason: 'AI_PROVIDER_UNAVAILABLE' }) }
   }
   const openRehearsal = (record: RehearsalRecord) => {
     snapshotLocked.current = true
@@ -135,6 +145,7 @@ export function App() {
             <div className="chart-card panel"><div className="chart-meta"><div className="legend"><span><i className="legend-line calm" />Calm path</span><span><i className="legend-line shock" />Shock → recovery</span></div><span className="chart-tag">MODELED PATHS</span></div><PriceChart candles={candles} calm={calm.map((p) => p.price)} shock={shock.map((p) => p.price)} /></div>
             <div className="outcome-grid"><OutcomeCard label="Calm path" result={calmResult} color="teal" /><OutcomeCard label="Shock → recovery" result={shockResult} color="amber" /></div>
             <div className="evidence-card panel"><div className="evidence-heading"><div className="source-icon"><Database size={16} /></div><div><strong>What the model used</strong><span>Evidence is separated from the scenario assumptions.</span></div><button className="text-button" onClick={() => setTab('methodology')}>View method <ArrowUpRight size={14} /></button></div><div className="evidence-grid"><div><span className="evidence-label">Observed from Bitget</span><strong>{ticker ? 'Mark, index, ticker and funding' : 'Example snapshot only'}</strong><small>{ticker ? (snapshotLocked.current ? 'Market snapshot from saved rehearsal' : 'Live public market endpoint · captured now') : 'Provider unavailable for this session'}</small></div><div><span className="evidence-label">Modeled assumption</span><strong>{pct(dipMove)} adverse dip</strong><small>Deterministic path · not a forecast</small></div><div><span className="evidence-label">Historical context</span><strong>{historicalReturn === null ? 'Insufficient history' : `${pct(historicalReturn)} window move`}</strong><small>{candles.length ? `${candles.length} hourly candles observed` : 'No replay loaded'}</small></div></div></div>
+            <div className="ai-card panel"><div className="evidence-heading"><div className="source-icon ai-icon"><Sparkles size={16} /></div><div><strong>Anthropic reading</strong><span>Claude explains the rehearsal without changing its numbers.</span></div><button className="primary-button compact" onClick={explainCurrent} disabled={aiState === 'loading'}>{aiState === 'loading' ? 'Reading…' : 'Explain this rehearsal'} <Sparkles size={14} /></button></div>{aiState === 'idle' && <p className="ai-hint">Get a concise risk read grounded in this snapshot, your thesis, and the two modeled paths.</p>}{aiState === 'unavailable' && <p className="ai-hint">Anthropic is not configured on this deployment. The deterministic method remains available.</p>}{aiState === 'error' && <p className="ai-hint">Anthropic could not be reached. Nothing in the rehearsal was changed.</p>}{aiResult?.explanation && <div className="ai-output"><div className="ai-summary">{aiResult.explanation.summary}</div><div className="ai-columns"><div><span className="evidence-label">Risks to watch</span>{aiResult.explanation.risks.map((item) => <p key={item}>{item}</p>)}</div><div><span className="evidence-label">Grounded evidence</span>{aiResult.explanation.evidence.map((item) => <p key={item}>{item}</p>)}</div><div><span className="evidence-label">Open questions</span>{aiResult.explanation.questions.map((item) => <p key={item}>{item}</p>)}</div></div><small className="ai-disclaimer">AI-assisted explanation · not a forecast or trading instruction</small></div>}</div>
           </section>
         </section>
         {showMethod && <div className="drawer-backdrop" onClick={() => setShowMethod(false)}><aside className="method-drawer" onClick={(event) => event.stopPropagation()}><button className="drawer-close" aria-label="Close method" onClick={() => setShowMethod(false)}><X size={18} /></button><span className="step-label">MODEL NOTE</span><h2>How this rehearsal works</h2><p>Veltryn separates observed Bitget market data from deterministic scenario assumptions. It does not predict the market or place orders.</p><div className="formula"><span>position PnL</span><strong>direction × quantity × (mark − entry)</strong></div><div className="formula"><span>equity</span><strong>collateral + PnL − fees − funding</strong></div><p className="small-copy">This first slice uses a linear isolated position and a taker-fee estimate. Exact liquidation is disabled until maintenance-margin parameters are verified from an authoritative source.</p></aside></div>}
