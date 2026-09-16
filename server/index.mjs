@@ -152,7 +152,7 @@ async function signedBitgetGet(path, params) {
   try {
     const result = await fetch(`https://api.bitget.com${requestPath}`, { signal: controller.signal, headers: { 'ACCESS-KEY': bitgetKey, 'ACCESS-SIGN': signature, 'ACCESS-TIMESTAMP': timestamp, 'ACCESS-PASSPHRASE': bitgetPassphrase, 'locale': 'en-US', accept: 'application/json' } })
     const payload = await result.json()
-    if (!result.ok || payload.code !== '00000') return { status: 'error', reason: 'BITGET_PRIVATE_API_REJECTED' }
+    if (!result.ok || payload.code !== '00000') return { status: 'error', reason: 'BITGET_PRIVATE_API_REJECTED', code: String(payload.code ?? 'unknown').slice(0, 32) }
     return { status: 'ready', liqPrice: Number(payload.data?.liqPrice), observedAt: new Date().toISOString() }
   } finally { clearTimeout(timer) }
 }
