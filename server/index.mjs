@@ -31,7 +31,8 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS rehearsals (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS rehearsals_session_updated ON rehearsals(session_id, updated_at DESC);
   CREATE TABLE IF NOT EXISTS shares (token TEXT PRIMARY KEY, rehearsal_id TEXT NOT NULL, session_id TEXT NOT NULL, created_at TEXT NOT NULL, revoked_at TEXT);
-`)
+  CREATE TABLE IF NOT EXISTS analytics_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, event_name TEXT NOT NULL, created_at TEXT NOT NULL, metadata TEXT NOT NULL);
+  `)
 
 function parseJson(value) { return JSON.parse(value) }
 function legacyStore() {
@@ -230,7 +231,7 @@ const server = http.createServer(async (request, response) => {
       if (!share || share.revokedAt || !record) return send(response, 404, { error: 'report_not_found' })
       return send(response, 200, { record: toPublic(record), publishedAt: share.createdAt })
     }
-    if (!request.url?.startsWith('/api/workspace/rehearsals') && request.url !== '/api/workspace/research/verify' && request.url !== '/api/workspace/ai/explain' && request.url !== '/api/workspace/liquidation') return send(response, 404, { error: 'not_found' })
+    if (!request.url?.startsWith('/api/workspace/rehearsals') && request.url !== '/api/workspace/research/verify' && request.url !== '/api/workspace/ai/explain' && request.url !== '/api/workspace/liquidation' && request.url !== '/api/analytics/events') return send(response, 404, { error: 'not_found' })
     const current = session(request, response)
     const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
     if (request.method === 'POST' && url.pathname === '/api/workspace/ai/explain') {
@@ -243,6 +244,12 @@ const server = http.createServer(async (request, response) => {
       const input = await body(request)
       if (!validLiqInput(input)) return send(response, 422, { error: 'invalid_liquidation_input' })
       try { return send(response, 200, await signedBitgetGet('/api/v2/mix/account/liq-price', { productType: 'USDT-FUTURES', symbol: input.symbol, posSide: input.direction, orderType: 'limit', marginCoin: 'USDT', openAmount: input.openAmount, openPrice: input.openPrice })) } catch { return send(response, 502, { status: 'error', reason: 'BITGET_PRIVATE_API_UNAVAILABLE' }) }
+    }
+    if (request.method === 'POST' && url.pathname === '/api/analytics/events') {
+      const input = await body(request)
+      if (!input || typeof input.name !== 'string' || !/^[a-z0-9_.-]{2,50}$/.test(input.name) || JSON.stringify(input.metadata ?? {}).length > 2000) return send(response, 422, { error: 'invalid_event' })
+      database.prepare('INSERT INTO analytics_events (id, session_id, event_name, created_at, metadata) VALUES (?, ?, ?, ?, ?)').run(randomUUID(), current.id, input.name, new Date().toISOString(), JSON.stringify(input.metadata ?? {}))
+      return send(response, 200, { accepted: true })
     }
     const collectionPath = '/api/workspace/rehearsals'
     const tail = url.pathname === collectionPath ? '' : url.pathname.slice(`${collectionPath}/`.length)

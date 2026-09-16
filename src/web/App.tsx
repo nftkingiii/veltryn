@@ -5,8 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, BookOpen, CircleHelp, Clock3, Copy, Database, LineChart, RotateCcw, Save, ShieldCheck, Sparkles, Trash2, X } from '../ui/icons'
 import { getCandles, getTicker, listRwaInstruments, type Candle, type Instrument, type Ticker } from '../providers/bitget'
 import { makePath, stressPath, type Direction, type PositionPlan, type StressResult } from '../domain/engine'
+import { findHistoricalAnalogues } from '../domain/analogues'
 import { loadRehearsalsWithFallback, persistRehearsalWithFallback, removeRehearsalWithFallback, type RehearsalRecord, type ResearchSource } from '../domain/storage'
-import { createRemoteShare, explainRehearsal, getLiquidationPrice, loadPublicReport, revokeRemoteShare, verifyRemoteSource, type AiExplanationResult } from '../providers/workspace'
+import { createRemoteShare, explainRehearsal, getLiquidationPrice, loadPublicReport, revokeRemoteShare, trackEvent, verifyRemoteSource, type AiExplanationResult } from '../providers/workspace'
 
 const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toFixed(2)}`
 const pct = (value: number) => `${value < 0 ? '−' : ''}${Math.abs(value * 100).toFixed(2)}%`
@@ -68,6 +69,7 @@ export function App() {
   const shockResult = stressPath(plan, shock)
   const leverage = liveEntry * quantity / collateral
   const historicalReturn = candles.length > 1 ? (Number(candles[candles.length - 1][4]) / Number(candles[0][1])) - 1 : null
+  const analogues = useMemo(() => findHistoricalAnalogues(candles), [candles])
   useEffect(() => {
     let cancelled = false
     setLiquidation({ status: 'loading' })
@@ -80,11 +82,13 @@ export function App() {
   const saveCurrent = () => {
     if (saving) return
     setSaving(true)
+    trackEvent('rehearsal_saved', { symbol: selected, provider: ticker ? 'live' : 'fallback' })
     persistRehearsalWithFallback({ symbol: selected, direction, quantity, collateral, lossBudget, endpointMove, dipMove, thesis, providerState: ticker ? 'live' : 'fallback', ticker, candles, researchSources }, activeRehearsalId).then(({ record, mode }) => { setRehearsals((current) => [record, ...current.filter((item) => item.id !== record.id)]); setWorkspaceMode(mode); setActiveRehearsalId(record.id); setSaved(true) }).catch(() => setShareError('Could not save. Please try again.')).finally(() => setSaving(false))
   }
   const explainCurrent = async () => {
     if (aiState === 'loading') return
     setAiState('loading'); setAiResult(null)
+    trackEvent('ai_explanation_requested', { symbol: selected })
     try {
       const result = await explainRehearsal({ symbol: selected, direction, thesis, observed: { markPrice: liveEntry, fundingRate: plan.fundingRate, candleCount: candles.length, historicalReturn }, scenarios: { calm: calmResult, shock: shockResult, endpointMove, dipMove }, sources: researchSources.map(({ id, title, stance, note, verification }) => ({ id, title, stance, note, verification })) })
       setAiResult(result); setAiState(result.status === 'ready' ? 'ready' : result.status === 'unavailable' ? 'unavailable' : 'error')

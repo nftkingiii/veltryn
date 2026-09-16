@@ -52,3 +52,7 @@ export type LiquidationResult = { status: 'ready' | 'unavailable' | 'error'; liq
 export async function getLiquidationPrice(input: { symbol: string; direction: 'long' | 'short'; openAmount: number; openPrice: number }) {
   return request<LiquidationResult>('/api/workspace/liquidation', { method: 'POST', body: JSON.stringify(input) })
 }
+
+export function trackEvent(name: string, metadata: Record<string, string | number | boolean> = {}) {
+  void fetch('/api/analytics/events', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, metadata }) }).catch(() => {})
+}
