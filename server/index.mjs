@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +18,9 @@ const version = process.env.VELTRYN_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SH
 const persistenceMode = sqliteFile.startsWith('/data/') ? 'sqlite-volume' : 'sqlite-local'
 const anthropicModel = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
 const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim()
+const bitgetKey = process.env.BITGET_API_KEY?.trim()
+const bitgetSecret = process.env.BITGET_API_SECRET?.trim()
+const bitgetPassphrase = process.env.BITGET_API_PASSPHRASE?.trim()
 const aiRequests = new Map()
 await mkdir(dirname(sqliteFile), { recursive: true })
 const database = new DatabaseSync(sqliteFile)
@@ -139,6 +142,25 @@ async function proxyBitget(request, response) {
   } finally { clearTimeout(timer) }
 }
 
+async function signedBitgetGet(path, params) {
+  if (!bitgetKey || !bitgetSecret || !bitgetPassphrase) return { status: 'unavailable', reason: 'BITGET_PRIVATE_API_NOT_CONFIGURED' }
+  const query = new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)])).toString()
+  const timestamp = String(Date.now())
+  const requestPath = `${path}?${query}`
+  const signature = createHmac('sha256', bitgetSecret).update(`${timestamp}GET${requestPath}`).digest('base64')
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const result = await fetch(`https://api.bitget.com${requestPath}`, { signal: controller.signal, headers: { 'ACCESS-KEY': bitgetKey, 'ACCESS-SIGN': signature, 'ACCESS-TIMESTAMP': timestamp, 'ACCESS-PASSPHRASE': bitgetPassphrase, 'locale': 'en-US', accept: 'application/json' } })
+    const payload = await result.json()
+    if (!result.ok || payload.code !== '00000') return { status: 'error', reason: 'BITGET_PRIVATE_API_REJECTED' }
+    return { status: 'ready', liqPrice: Number(payload.data?.liqPrice), observedAt: new Date().toISOString() }
+  } finally { clearTimeout(timer) }
+}
+
+function validLiqInput(value) {
+  return value && typeof value.symbol === 'string' && /^[A-Z0-9]{3,20}USDT$/.test(value.symbol) && ['long', 'short'].includes(value.direction) && Number.isFinite(Number(value.openAmount)) && Number(value.openAmount) > 0 && Number.isFinite(Number(value.openPrice)) && Number(value.openPrice) > 0
+}
+
 async function body(request) {
   let text = ''
   for await (const chunk of request) {
@@ -197,7 +219,7 @@ async function retrieveSource(raw) {
 
 const server = http.createServer(async (request, response) => {
   try {
-    if (request.url === '/healthz') return send(response, 200, { status: 'ok', version, readiness: persistenceMode, aiProvider: anthropicKey ? 'anthropic' : 'unconfigured', aiModel: anthropicKey ? anthropicModel : null })
+    if (request.url === '/healthz') return send(response, 200, { status: 'ok', version, readiness: persistenceMode, aiProvider: anthropicKey ? 'anthropic' : 'unconfigured', aiModel: anthropicKey ? anthropicModel : null, bitgetPrivate: bitgetKey && bitgetSecret && bitgetPassphrase ? 'configured' : 'unconfigured' })
     if (await proxyBitget(request, response)) return
     if (await staticFile(request, response)) return
     if (request.url?.startsWith('/api/public/reports/')) {
@@ -207,7 +229,7 @@ const server = http.createServer(async (request, response) => {
       if (!share || share.revokedAt || !record) return send(response, 404, { error: 'report_not_found' })
       return send(response, 200, { record: toPublic(record), publishedAt: share.createdAt })
     }
-    if (!request.url?.startsWith('/api/workspace/rehearsals') && request.url !== '/api/workspace/research/verify' && request.url !== '/api/workspace/ai/explain') return send(response, 404, { error: 'not_found' })
+    if (!request.url?.startsWith('/api/workspace/rehearsals') && request.url !== '/api/workspace/research/verify' && request.url !== '/api/workspace/ai/explain' && request.url !== '/api/workspace/liquidation') return send(response, 404, { error: 'not_found' })
     const current = session(request, response)
     const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
     if (request.method === 'POST' && url.pathname === '/api/workspace/ai/explain') {
@@ -215,6 +237,11 @@ const server = http.createServer(async (request, response) => {
       const input = await body(request)
       if (!aiInput(input)) return send(response, 422, { error: 'invalid_ai_input' })
       try { return send(response, 200, await explainWithAnthropic(input)) } catch { return send(response, 502, { status: 'error', provider: 'anthropic', reason: 'AI_PROVIDER_UNAVAILABLE' }) }
+    }
+    if (request.method === 'POST' && url.pathname === '/api/workspace/liquidation') {
+      const input = await body(request)
+      if (!validLiqInput(input)) return send(response, 422, { error: 'invalid_liquidation_input' })
+      try { return send(response, 200, await signedBitgetGet('/api/v2/mix/account/liq-price', { productType: 'USDT-FUTURES', symbol: input.symbol, posSide: input.direction, orderType: 'limit', marginCoin: 'USDT', openAmount: input.openAmount, openPrice: input.openPrice })) } catch { return send(response, 502, { status: 'error', reason: 'BITGET_PRIVATE_API_UNAVAILABLE' }) }
     }
     const collectionPath = '/api/workspace/rehearsals'
     const tail = url.pathname === collectionPath ? '' : url.pathname.slice(`${collectionPath}/`.length)

@@ -47,3 +47,8 @@ export type AiExplanationResult = { status: 'ready' | 'unavailable' | 'error'; p
 export async function explainRehearsal(input: AiExplanationInput) {
   return request<AiExplanationResult>('/api/workspace/ai/explain', { method: 'POST', body: JSON.stringify(input) })
 }
+
+export type LiquidationResult = { status: 'ready' | 'unavailable' | 'error'; liqPrice?: number; observedAt?: string; reason?: string }
+export async function getLiquidationPrice(input: { symbol: string; direction: 'long' | 'short'; openAmount: number; openPrice: number }) {
+  return request<LiquidationResult>('/api/workspace/liquidation', { method: 'POST', body: JSON.stringify(input) })
+}
