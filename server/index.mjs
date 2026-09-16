@@ -231,7 +231,7 @@ const server = http.createServer(async (request, response) => {
       if (!share || share.revokedAt || !record) return send(response, 404, { error: 'report_not_found' })
       return send(response, 200, { record: toPublic(record), publishedAt: share.createdAt })
     }
-    if (!request.url?.startsWith('/api/workspace/rehearsals') && request.url !== '/api/workspace/research/verify' && request.url !== '/api/workspace/ai/explain' && request.url !== '/api/workspace/liquidation' && request.url !== '/api/analytics/events') return send(response, 404, { error: 'not_found' })
+    if (!request.url?.startsWith('/api/workspace/rehearsals') && request.url !== '/api/workspace/research/verify' && request.url !== '/api/workspace/ai/explain' && request.url !== '/api/workspace/liquidation' && request.url !== '/api/analytics/events' && request.url !== '/api/analytics/summary') return send(response, 404, { error: 'not_found' })
     const current = session(request, response)
     const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
     if (request.method === 'POST' && url.pathname === '/api/workspace/ai/explain') {
@@ -250,6 +250,10 @@ const server = http.createServer(async (request, response) => {
       if (!input || typeof input.name !== 'string' || !/^[a-z0-9_.-]{2,50}$/.test(input.name) || JSON.stringify(input.metadata ?? {}).length > 2000) return send(response, 422, { error: 'invalid_event' })
       database.prepare('INSERT INTO analytics_events (id, session_id, event_name, created_at, metadata) VALUES (?, ?, ?, ?, ?)').run(randomUUID(), current.id, input.name, new Date().toISOString(), JSON.stringify(input.metadata ?? {}))
       return send(response, 200, { accepted: true })
+    }
+    if (request.method === 'GET' && url.pathname === '/api/analytics/summary') {
+      const summary = database.prepare('SELECT COUNT(*) AS events, COUNT(DISTINCT event_name) AS eventTypes, MIN(created_at) AS firstEvent, MAX(created_at) AS lastEvent FROM analytics_events WHERE session_id = ?').get(current.id)
+      return send(response, 200, { ...summary, byEvent: database.prepare('SELECT event_name AS name, COUNT(*) AS count FROM analytics_events WHERE session_id = ? GROUP BY event_name ORDER BY count DESC').all(current.id) })
     }
     const collectionPath = '/api/workspace/rehearsals'
     const tail = url.pathname === collectionPath ? '' : url.pathname.slice(`${collectionPath}/`.length)

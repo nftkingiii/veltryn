@@ -90,7 +90,7 @@ export function App() {
     setAiState('loading'); setAiResult(null)
     trackEvent('ai_explanation_requested', { symbol: selected })
     try {
-      const result = await explainRehearsal({ symbol: selected, direction, thesis, observed: { markPrice: liveEntry, fundingRate: plan.fundingRate, candleCount: candles.length, historicalReturn }, scenarios: { calm: calmResult, shock: shockResult, endpointMove, dipMove }, sources: researchSources.map(({ id, title, stance, note, verification }) => ({ id, title, stance, note, verification })) })
+      const result = await explainRehearsal({ symbol: selected, direction, thesis, observed: { markPrice: liveEntry, fundingRate: plan.fundingRate, candleCount: candles.length, historicalReturn }, scenarios: { calm: calmResult, shock: shockResult, endpointMove, dipMove, historicalAnalogues: analogues }, sources: researchSources.map(({ id, title, stance, note, verification }) => ({ id, title, stance, note, verification })) })
       setAiResult(result); setAiState(result.status === 'ready' ? 'ready' : result.status === 'unavailable' ? 'unavailable' : 'error')
     } catch { setAiState('error'); setAiResult({ status: 'error', provider: 'anthropic', reason: 'AI_PROVIDER_UNAVAILABLE' }) }
   }
